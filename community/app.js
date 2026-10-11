@@ -97,6 +97,12 @@ function renderAccount() {
     if (TURNSTILE_SITE_KEY) startTurnstile();
     return;
   }
+  // Profiel voor Mijn vrienden: besloten, nooit via deze pagina openbaar te maken.
+  if (acct.groupsOnly) {
+    root.innerHTML = prefix + note + '<p class="status">Deze speler heeft een besloten profiel voor <b>Mijn vrienden</b>. Dat is niet openbaar en staat niet in deze ranglijst.</p>' +
+      '<a class="action" href="../vrienden/">Naar Mijn vrienden</a>';
+    return;
+  }
   const snapshots = publicSnapshots(local, playerId);
   const total = snapshots.find(x => x.period === 'all');
   const count = total?.sessions || 0;

@@ -14,9 +14,9 @@
 import { parseBackup, mergeData } from './store.js';
 import { trainingTotals, avg3 } from './logic.js';
 
-// open: of de verhuizing op het oude adres wordt aangekondigd. Pas op true zetten als app.okkiedarts.nl
-// live staat en de overdracht op echte toestellen is getest (VERHUIZING.md, stap 4).
-export const PROD = { oldOrigin: 'https://martijndbesten.github.io', oldPath: '/dartlog/', newApp: 'https://app.okkiedarts.nl/', open: false };
+// open: of de verhuizing op het oude adres wordt aangekondigd (VERHUIZING.md, stap 7). Nooit doorverwijzen:
+// het oude adres blijft werken en blijft het overdrachtspunt. Terugdraaien = false en opnieuw publiceren.
+export const PROD = { oldOrigin: 'https://martijndbesten.github.io', oldPath: '/dartlog/', newApp: 'https://app.okkiedarts.nl/', open: true };
 
 // Alleen voor tests op localhost: localStorage 'okkie.dev' = { transfer: { oldOrigin, oldPath, newApp, open } }.
 const isLocal = () => typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);

@@ -1,7 +1,8 @@
 // OKKIE — interface. Spelregels staan in logic.js, opslag in store.js.
 import * as L from './logic.js';
 import * as S from './store.js';
-import { queueCommunitySync, getAccount } from './community-sync.js';
+import { queueCommunitySync, getAccount, apiAvailable } from './community-sync.js';
+import * as G from './guest-sync.js';
 import * as Backup from './backup-alert.js';
 import { boardSVG, heatLegend } from './board.js';
 import { lineChart, bindChart } from './chart.js';
@@ -12,7 +13,7 @@ import * as T from './transfer.js';
 import * as I from './install.js';
 import { DARTCOUNTER_SET, dartCounterTrainings, hasDartCounterSet } from './imports.js';
 
-export const APP_VERSION = '1.3.4';
+export const APP_VERSION = '1.4.0';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -246,6 +247,7 @@ VIEWS.welcome = () => `
     <p class="tagline">${TAGLINE}</p>
     <p class="lead">Jouw eigen darttrainer. Gooi, tik je pijlen in en zie of je beter wordt.</p>
     ${T.role() === 'new' ? fetchCard() : ''}
+    ${T.announce() ? newHereCard() : ''}
     <form class="card" data-form="welcome">
       <label for="wname">Hoe heet je?</label>
       <input id="wname" name="name" maxlength="24" autocomplete="nickname" placeholder="Je naam" required autofocus>
@@ -256,6 +258,14 @@ VIEWS.welcome = () => `
     <p class="fineprint">Alles wordt op dit toestel bewaard. Geen account, geen reclame.</p>
       <p class="maker-line"><a class="maker" href="https://denckh.nl/" target="_blank" rel="noopener" aria-label="Ontwikkeld door Denckh (naar denckh.nl)"><span class="maker-role">Ontwikkeld door</span><img class="on-dark" src="./icons/denckh-logo-signature-light.svg" alt="Denckh" width="92" height="28"><img class="on-light" src="./icons/denckh-logo-signature.svg" alt="Denckh" width="92" height="28"></a></p>
   </section>`;
+
+// Oude adres tijdens de verhuizing: een nieuwe bezoeker (bijv. via een oude link) begint liever meteen op het
+// nieuwe adres. Geen doorverwijzing: hier verder spelen blijft gewoon mogelijk.
+function newHereCard() {
+  return `<section class="card move-card" data-testid="new-here"><h3>OKKIE. staat nu op app.okkiedarts.nl</h3>
+    <p class="muted">Begin daar, dan staan je trainingen meteen op de goede plek. Hier blijft alles ook gewoon werken.</p>
+    <a class="btn primary" href="${T.NEW_APP()}">Open app.okkiedarts.nl</a></section>`;
+}
 
 // Op het nieuwe adres staat dit bovenaan (daar komen tijdens de verhuizing vooral bestaande spelers),
 // in een geïnstalleerde app onder het naamveld.
@@ -311,6 +321,9 @@ VIEWS.home = () => {
       <button class="action stats" data-go="stats">
         <span class="a-icon">${icon('stats')}</span><span><b>Mijn statistieken</b><small>Word ik beter?</small></span>
       </button>
+      <a class="action stats" href="./vrienden/" aria-label="Open Mijn vrienden">
+        <span class="a-icon">${icon('friends')}</span><span><b>Mijn vrienden</b><small>Besloten groep met je vrienden</small></span>
+      </a>
       <a class="action stats" href="./community/" aria-label="Open de community-ranglijst">
         <span class="a-icon">${icon('trophy')}</span><span><b>Community</b><small>Vergelijk je scores met anderen</small></span>
       </a>
@@ -384,12 +397,13 @@ VIEWS.train = () => {
       <p class="choice-info">${info}</p>
       ${s.turns === -1 ? `<label class="inline">Aantal beurten <input type="number" min="1" max="200" inputmode="numeric" value="${s.custom}" data-input="custom-turns"></label>` : ''}
       <h3 class="who">Wie gooien er? <small>max. 4, om de beurt</small></h3>
-      <ol class="match-players" data-testid="train-players">${ps.map((id, i) => `<li><span><i class="dot" style="background:${esc(player(id).color)}"></i> ${esc(player(id).name)}</span>
+      <ol class="match-players" data-testid="train-players">${ps.map((id, i) => `<li><span><i class="dot" style="background:${esc(player(id).color)}"></i> ${esc(player(id).name)}${G.guestLink(id)?.code ? ' <span class="linked" title="Gekoppeld: deze training gaat naar zijn eigen OKKIE.">🔗</span>' : ''}</span>
         ${i > 0 ? `<button class="icon-btn small" data-act="tp-up" data-arg="${i}" aria-label="Eerder gooien">↑</button>` : ''}
         ${ps.length > 1 ? `<button class="icon-btn small" data-act="tp-remove" data-arg="${i}" aria-label="Niet meedoen">✕</button>` : ''}</li>`).join('')}</ol>
       ${ps.length < 4 ? `<div class="add-player">
         <div class="chips">${others.map(p => `<button class="chip" data-act="tp-add" data-arg="${esc(p.id)}">+ ${esc(p.name)}</button>`).join('')}</div>
         <form data-form="train-player" class="guest"><input name="name" maxlength="24" placeholder="Naam vriend of familie" aria-label="Naam nieuwe speler"><button class="btn secondary">+ Speler</button></form>
+        ${apiAvailable() ? `<button class="btn ghost small" data-act="guest-link-open" data-testid="guest-link-open">${icon('group', { size: 17 })}Speler met eigen OKKIE.? Vul zijn koppelcode in</button>` : ''}
       </div>` : ''}
       <button class="btn primary big" data-act="start-score" data-testid="start-score">${ps.length > 1 ? `Start met ${ps.length} spelers` : 'Start scoretraining'}</button>
     </section>
@@ -929,6 +943,17 @@ VIEWS.more = () => {
       <p class="muted">Alle trainingen en wedstrijden terugkijken, corrigeren of verwijderen.</p>
       <button class="btn secondary" data-go="history">${icon('history', { size: 19 })}Open geschiedenis</button>
     </section>
+    <section class="card" data-testid="other-phone">
+      <h3>Darten op een andere telefoon</h3>
+      <p class="muted">Gooi je mee bij een vriend? Maak een koppelcode; je vriend vult hem in bij Trainen. Jouw training komt daarna bij je eigen statistieken. Werkt met een profiel van Mijn vrienden.</p>
+      ${getAccount(data.activePlayerId) ? '<button class="btn secondary" data-act="guest-pass">Maak koppelcode</button>' : '<a class="btn secondary" href="./vrienden/">Eerst een profiel via Mijn vrienden ↗</a>'}
+      ${G.readGuest().queue.length ? `<p class="note" data-testid="guest-queue">${G.readGuest().queue.length} training(en) van gasten wacht(en) op internet om verstuurd te worden.${G.readGuest().queue.some(q => q.error) ? ' Eén of meer codes werken niet meer; vraag een nieuwe code en koppel opnieuw.' : ''}</p><button class="btn ghost small" data-act="guest-retry">Nu versturen</button>` : ''}
+    </section>
+    <section class="card">
+      <h3>Mijn vrienden</h3>
+      <p class="muted">Een besloten groep om met vrienden gemiddelden, records en de weekchallenge te vergelijken. Je kiest zelf wat je deelt.</p>
+      <a class="btn secondary" href="./vrienden/">Open Mijn vrienden ↗</a>
+    </section>
     <section class="card">
       <h3>Community en ranglijst</h3>
       <p class="muted">Bekijk openbare scores van andere spelers. Delen van jouw cijfers is vrijwillig: alleen een nickname en statistieken.</p>
@@ -992,6 +1017,7 @@ function startScore() {
   const turns = s.turns === -1 ? Math.max(1, Math.min(200, Number(s.custom) || 10)) : s.turns;
   const players = setupPlayers().slice(0, 4);
   data.active.training = { id: S.uid(), playerId: players[0], players, kind: 'score', limitTurns: turns || null, startedAt: now(), turns: [], pending: [] };
+  G.claimGuests(data.active.training);
   ui.mod = 1;
   save();
   go('play-score');
@@ -1029,7 +1055,7 @@ function finishActiveTraining(showResult = true) {
   if (!t) return;
   if (t.pending.length) t.turns.push({ at: now(), darts: t.pending, p: curIdx(t) });
   data.active.training = null;
-  if (!t.turns.length) { save(); if (showResult) go('home'); return; }
+  if (!t.turns.length) { G.releaseGuests(t.id); save(); if (showResult) go('home'); return; }
   const before = new Map(t.players.map(id => [id, { rec: records(id), badges: earnedBadges(data, id), prev: prevAverage(id, t.limitTurns) }]));
   const saved = [];
   t.players.forEach((pid, i) => {
@@ -1043,6 +1069,7 @@ function finishActiveTraining(showResult = true) {
   save();
   // Synchronisatie alleen na toestemming; netwerkfouten beïnvloeden lokaal darten niet.
   queueCommunitySync(data, saved.map(tr => tr.playerId));
+  if (G.queueGuestTrainings(t.id, saved)) sendGuests();
   const per = saved.map(tr => {
     const b = before.get(tr.playerId);
     return { id: tr.id, playerId: tr.playerId, prevAvg: b.prev, records: diffRecords(b.rec, records(tr.playerId)), newBadges: [...earnedBadges(data, tr.playerId)].filter(x => !b.badges.has(x)) };
@@ -1475,6 +1502,20 @@ function switchPlayerModal() {
 }
 
 const ACTIONS = {
+  'guest-link-open': () => modal(`<h3>Speler met eigen OKKIE.</h3>
+    <p class="muted">Gooit een vriend mee die zelf OKKIE. heeft? Laat hem op zijn telefoon bij <b>Meer → Darten op een andere telefoon</b> een koppelcode maken. Zijn training gaat dan na afloop naar zijn eigen statistieken. Jouw scores blijven gewoon van jou.</p>
+    <form data-form="guest-link"><label class="inline">Koppelcode <input name="code" maxlength="9" autocomplete="off" autocapitalize="characters" placeholder="ABCD-EFGH" required></label>
+    <label class="inline">Naam (alleen nodig zonder internet) <input name="name" maxlength="24"></label>
+    <div class="modal-actions"><button type="button" class="btn ghost" data-act="modal-close">Annuleren</button><button class="btn primary">Koppelen</button></div></form>`),
+  'guest-pass': async () => {
+    try {
+      const r = await G.makeGuestCode(data.activePlayerId);
+      modal(`<h3>Jouw koppelcode</h3><p class="guest-code" data-testid="guest-code">${esc(r.code)}</p>
+        <p class="muted">Laat je vriend deze code invullen bij <b>Trainen → Speler met eigen OKKIE.?</b>. De code is ${r.days} dagen geldig en werkt voor <b>één</b> training. Na afloop komt die training vanzelf bij jouw statistieken. De code geeft geen toegang tot je profiel.</p>
+        <div class="modal-actions"><button class="btn primary" data-act="modal-close">Klaar</button></div>`);
+    } catch (e) { toast(e instanceof TypeError ? 'Geen internet. Een koppelcode maken lukt alleen online.' : e.message); }
+  },
+  'guest-retry': () => sendGuests(true),
   'modal-close': closeModal,
   'transfer-send': transferSendModal,
   'transfer-auto': transferAuto,
@@ -1581,7 +1622,7 @@ const ACTIONS = {
   'delete-training': id => confirmBox('Training verwijderen?', 'Deze training verdwijnt definitief uit je geschiedenis en statistieken.', 'Verwijderen', () => {
     const affected = data.trainings.find(t => t.id === id)?.playerId;
     data.trainings = data.trainings.filter(t => t.id !== id); T.rememberRemoved(data, 'trainings', [id]); save();
-    if (affected) queueCommunitySync(data, [affected]);
+    if (affected) queueCommunitySync(data, [affected], { replace: true });
     closeModal(); render(); toast('Training verwijderd.');
   }),
   'delete-match': id => confirmBox('Wedstrijd verwijderen?', 'Deze wedstrijd verdwijnt definitief.', 'Verwijderen', () => {
@@ -1641,6 +1682,24 @@ function goAfterTransfer() {
 
 const FORMS = {
   'transfer-code': fd => previewTransfer(fd.get('code')),
+  'guest-link': async fd => {
+    const code = G.normalizeCode(fd.get('code'));
+    if (code.length !== 8) return toast('Een koppelcode heeft 8 tekens, bijvoorbeeld ABCD-EFGH.');
+    let nickname = S.cleanName(fd.get('name'));
+    try { nickname = (await G.previewCode(code)).nickname; }
+    catch (e) {
+      if (!(e instanceof TypeError)) return toast(e.message);
+      if (!nickname) return toast('Geen internet: vul ook zijn naam in. De code wordt later gecontroleerd.');
+    }
+    const links = G.readGuest().links;
+    let p = data.players.find(x => links[x.id] && links[x.id].nickname === nickname);
+    if (!p) { p = S.newPlayer(nickname, data.players.length); data.players.push(p); save(); }
+    G.linkGuest(p.id, code, nickname);
+    const ps = setupPlayers();
+    if (!ps.includes(p.id) && ps.length < 4) ps.push(p.id);
+    closeModal(); render();
+    toast(`${nickname} is gekoppeld. Na de training gaat zijn score naar zijn eigen OKKIE.`);
+  },
   welcome: fd => {
     const name = S.cleanName(fd.get('name'));
     if (!name) return toast('Vul je naam in.');
@@ -1668,6 +1727,7 @@ const FORMS = {
     if (!name) return toast('Vul een naam in.');
     const ps = setupPlayers();
     let p = data.players.find(x => x.name.toLowerCase() === name.toLowerCase());
+    if (p && getAccount(p.id) && !ps.includes(p.id)) return toast(`${p.name} heeft op deze telefoon een eigen profiel. Gooit ${p.name} zelf? Kies dan + ${p.name}. Anders: kies een andere naam.`);
     if (!p) { p = S.newPlayer(name, data.players.length); data.players.push(p); save(); }
     if (ps.includes(p.id)) return toast(`${p.name} doet al mee.`);
     if (ps.length >= 4) return toast('Maximaal 4 spelers.');
@@ -1785,6 +1845,23 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     });
   }).catch(() => {});
 }
+
+// Gasten: wachtrij versturen; eigen telefoon: trainingen van andere telefoons ophalen. Nooit blokkerend.
+function sendGuests(manual = false) {
+  G.flushGuestQueue().then(r => {
+    if (r.sent.length) toast(`Training doorgestuurd naar ${[...new Set(r.sent)].join(', ')}.`);
+    else if (manual) toast(G.readGuest().queue.length ? 'Nog niet verstuurd. Probeer het later opnieuw.' : 'Alles is verstuurd.');
+    if (ui.view === 'more') render();
+  }).catch(() => {});
+}
+function syncOtherPhones() {
+  sendGuests();
+  G.pullInbox(data, save).then(n => {
+    if (n) { toast(n === 1 ? 'Een training van een andere telefoon is toegevoegd.' : `${n} trainingen van andere telefoons zijn toegevoegd.`); if (!PLAY_VIEWS.has(ui.view)) render(); }
+  }).catch(() => {});
+}
+syncOtherPhones();
+window.addEventListener('online', syncOtherPhones);
 
 // Voor tests
 window.__okkie = { get data() { return data; }, L };

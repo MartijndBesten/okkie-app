@@ -586,6 +586,10 @@ details.more .badge-banner { margin-bottom: 10px; }
 button.slot { font: inherit; color: inherit; cursor: pointer; }
 button.slot:active { transform: scale(.96); }
 
+/* Spelen op een andere telefoon */
+.guest-code { font-size: 2.2rem; font-weight: 800; letter-spacing: .12em; text-align: center; margin: 14px 0; color: var(--lime); font-variant-numeric: tabular-nums; }
+.linked { font-size: .9em; }
+
 /* Denckh-signatuur (officieel logo met krul, niet nagetekend). Lichte variant op donker, donkere variant op licht thema. */
 .maker { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; line-height: 1; color: inherit; text-decoration: none; }
 .maker .maker-role { font-size: .72rem; letter-spacing: .02em; font-weight: 600; color: var(--muted); }

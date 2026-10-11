@@ -4,6 +4,9 @@ import { points } from './logic.js';
 import { API_BASE } from '../community/config.js';
 
 export const COMMUNITY_KEY = 'okkie.community.v1';
+// Trainingen die je op een andere telefoon gooide (via koppelcode, zie guest-sync.js): echte OKKIE.-trainingen
+// waarvan alleen de samenvatting op je eigen telefoon staat. Die tellen mee; samenvattingen uit andere apps niet.
+export const OTHER_PHONE = 'Andere telefoon';
 
 export function readAccounts(storage = localStorage) {
   try {
@@ -35,7 +38,7 @@ function weekStart(iso) {
   return d.toISOString().slice(0, 10);
 }
 function summaryTemplate(period) {
-  return { period, darts: 0, points: 0, sessions: 0, highestTurn: 0, hits100: 0, hits140: 0, hits180: 0, best30: null, challenge30: null };
+  return { period, darts: 0, points: 0, sessions: 0, highestTurn: 0, hits100: 0, hits140: 0, hits180: 0, best30: null, best60: null, best99: null, challenge30: null };
 }
 function addSummary(target, source) {
   target.darts += source.darts;
@@ -45,6 +48,9 @@ function addSummary(target, source) {
   target.hits100 += source.hits100;
   target.hits140 += source.hits140;
   target.hits180 += source.hits180;
+  // Beste training van precies 60 / 99 pijlen (voor Mijn vrienden).
+  if (source.darts === 60) target.best60 = Math.max(target.best60 ?? 0, source.points);
+  if (source.darts === 99) target.best99 = Math.max(target.best99 ?? 0, source.points);
   if (source.darts === 30) {
     target.best30 = Math.max(target.best30 ?? 0, source.points);
     // De eerste afgeronde 30-pijlentraining per periode telt voor de challenge.
@@ -53,16 +59,25 @@ function addSummary(target, source) {
 }
 export function publicSnapshots(data, playerId) {
   const groups = new Map([['all', summaryTemplate('all')]]);
+  const fromOtherPhone = t => t.source === OTHER_PHONE && t.summary && !(t.turns || []).length;
   const sessions = (data.trainings || []).filter(t =>
-    t && t.playerId === playerId && t.kind === 'score' && !t.summary &&
-    t.finishedAt && Array.isArray(t.turns) && t.turns.length &&
-    t.turns.every(turn => Array.isArray(turn.darts) && turn.darts.length === 3)
+    t && t.playerId === playerId && t.kind === 'score' && t.finishedAt && (fromOtherPhone(t) || (!t.summary &&
+    Array.isArray(t.turns) && t.turns.length && t.turns.every(turn => Array.isArray(turn.darts) && turn.darts.length === 3)))
   ).sort((a,b) => new Date(a.finishedAt) - new Date(b.finishedAt) || String(a.id).localeCompare(String(b.id)));
   for (const t of sessions) {
     const day = new Date(t.finishedAt);
     if (!Number.isFinite(day.getTime())) continue;
     const w = weekStart(t.finishedAt);
     const month = day.toISOString().slice(0, 7);
+    if (fromOtherPhone(t)) {
+      const s = t.summary;
+      const source = { darts: s.darts, points: s.points, highestTurn: s.high || 0, hits100: s.tons || 0, hits140: s.t140 || 0, hits180: s.t180 || 0 };
+      for (const key of ['all', 'week:' + w, 'month:' + month]) {
+        if (!groups.has(key)) groups.set(key, summaryTemplate(key));
+        addSummary(groups.get(key), source);
+      }
+      continue;
+    }
     const turnPoints = t.turns.map(turn => turn.darts.reduce((s, code) => {
       const n = points(code);
       return s + (Number.isFinite(n) && n >= 0 && n <= 60 ? n : 0);
@@ -101,21 +116,22 @@ export async function request(path, method = 'GET', payload = null, token = null
   if (!response.ok) throw new Error(body.error || 'Kan OKKIE Cloud niet bereiken (' + response.status + ').');
   return body;
 }
-export async function syncAccount(data, playerId, storage = localStorage) {
+// replace: true alleen als de speler zelf trainingen verwijderde; anders weigert de server minder pijlen dan online.
+export async function syncAccount(data, playerId, storage = localStorage, { replace = false } = {}) {
   const acct = getAccount(playerId, storage);
   if (!acct?.token || !acct.enabled || !apiAvailable()) return { skipped: true };
   const snapshots = publicSnapshots(data, playerId);
-  const result = await request('/v1/me/snapshots', 'PUT', { snapshots }, acct.token);
+  const result = await request('/v1/me/snapshots', 'PUT', replace ? { snapshots, replace: true } : { snapshots }, acct.token);
   acct.lastSync = new Date().toISOString();
   upsertAccount(playerId, acct, storage);
   return result;
 }
 // Een mislukte verbinding mag een lokale training nooit blokkeren.
 // Geen synchronisatie zolang er geen expliciet ingeschakeld account is.
-export function queueCommunitySync(data, playerIds) {
+export function queueCommunitySync(data, playerIds, opts = {}) {
   if (!apiAvailable()) return;
   const ids = [...new Set(playerIds || [])];
   for (const id of ids) {
-    if (getAccount(id)?.enabled) syncAccount(data, id).catch(() => {});
+    if (getAccount(id)?.enabled) syncAccount(data, id, localStorage, opts).catch(() => {});
   }
 }
