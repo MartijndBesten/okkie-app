@@ -20,7 +20,7 @@ import * as SC from './share-card.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.6.1';
+export const APP_VERSION = '1.6.2';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -312,7 +312,7 @@ function newHereCard() {
 // in een geïnstalleerde app onder het naamveld.
 function fetchCard() {
   return `<section class="card move-card" data-testid="fetch-card"><h3>Al eerder OKKIE. gebruikt?</h3>
-      <p class="muted">${T.role() === 'new' ? 'Op het oude adres, in Safari of op een andere telefoon?' : 'In Safari of op een andere telefoon?'} Haal eerst je spelers en trainingen hierheen.</p>
+      <p class="muted">In Safari of op een andere telefoon? Haal eerst je spelers en trainingen hierheen.</p>
       <button class="btn secondary" data-act="transfer-receive">${icon('download', { size: 19 })}Trainingen ophalen</button></section>`;
 }
 
@@ -1019,7 +1019,6 @@ VIEWS.more = () => {
       <form data-form="add-player" class="guest"><input name="name" maxlength="24" placeholder="Nieuwe speler" aria-label="Naam nieuwe speler"><button class="btn secondary">+ Speler</button></form>
     </section>
     ${T.announce() ? moveCard() : ''}
-    ${T.role() === 'new' ? `<section class="card" data-testid="fetch-more"><h3>Trainingen van het oude adres</h3><p class="muted">Speelde je eerder op martijndbesten.github.io/dartlog? Haal die trainingen hierheen. Er komt niets dubbel.</p><button class="btn secondary" data-act="transfer-receive">${icon('download', { size: 19 })}Trainingen ophalen</button></section>` : ''}
     <nav class="card link-list" aria-label="Spelen en leren">
       <button class="link-row" data-go="history"><span class="a-icon">${icon('history', { size: 20 })}</span><span><b>Geschiedenis</b><small>Trainingen en wedstrijden terugkijken of verwijderen</small></span>${icon('chevron', { size: 18 })}</button>
       <a class="link-row" href="./uitleg/"><span class="a-icon">${icon('book', { size: 20 })}</span><span><b>Hoe werkt OKKIE.?</b><small>Uitleg voor kinderen en beginners</small></span>${icon('chevron', { size: 18 })}</a>
@@ -1478,7 +1477,7 @@ function transferCopy() {
 }
 function transferReceiveModal() {
   modal(`<h3>Trainingen ophalen</h3>
-    <p class="muted">Maak in je andere OKKIE. een overzetcode (<b>Meer → Overzetcode maken</b>${T.role() === 'new' ? ', of op het oude adres <b>Zet mijn trainingen over</b>' : ''}) en plak hem hier.</p>
+    <p class="muted">Maak in je andere OKKIE. een overzetcode (<b>Meer → Overzetcode maken</b>) en plak hem hier.</p>
     <form data-form="transfer-code"><textarea name="code" rows="4" class="transfer-code" data-testid="transfer-input" placeholder="OKKIE-OVERZETTEN-1:…" aria-label="Overzetcode"></textarea>
     <div class="modal-actions"><button type="button" class="btn secondary" data-act="transfer-paste">Plakken</button><button class="btn primary">Controleren</button></div></form>
     <p class="muted small">Heb je een back-upbestand? <label class="link file">Kies het bestand<input type="file" accept="application/json,.json" data-input="import" hidden></label></p>
