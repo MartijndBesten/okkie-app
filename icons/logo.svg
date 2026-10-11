@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="logo" height="100" viewBox="0 0 372 100" role="img" aria-label="OKKIE.">
+  <g><circle cx="50" cy="50" r="39" fill="none" stroke="#b8ff3c" stroke-width="10"/>
+  <circle cx="50" cy="50" r="16" fill="none" stroke="#b8ff3c" stroke-width="8"/>
+  <g transform="rotate(-45 50 50)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 50 H80" stroke="#07120d" stroke-width="11"/>
+    <path d="M78 50 L85 40 L97 38 L92 50 L97 62 L85 60 Z" fill="#07120d" stroke="#07120d" stroke-width="5"/>
+    <path d="M50 50 H59" stroke="#f3eedf" stroke-width="2.2"/>
+    <path d="M59 50 H72" stroke="#f3eedf" stroke-width="7"/>
+    <path d="M62.5 46.5 V53.5 M66 46.5 V53.5 M69.5 46.5 V53.5" stroke="#07120d" stroke-width="1.4"/>
+    <path d="M72 50 H81" stroke="#f3eedf" stroke-width="3"/>
+    <path d="M78 50 L85 40 L97 38 L92 50 L97 62 L85 60 Z" fill="#3ddc84"/>
+    <circle cx="88" cy="50" r="3.6" fill="#b8ff3c"/>
+  </g></g>
+  <path transform="translate(108 14)" fill="#f3eedf" d="M-0.34 72H19.76L22.52 55.28L33.83 43.78L46.1 72H67.94L48.27 30.93L78.52 0H54.51L37.11 18.51C33.68 22.18 30.25 25.8 26.82 29.48L29.14 15.46L31.7 0H11.6Z M70.81 72H90.91L93.66 55.28L104.97 43.78L117.24 72H139.09L119.42 30.93L149.67 0H125.65L108.26 18.51C104.83 22.18 101.39 25.8 97.96 29.48L100.28 15.46L102.84 0H82.74Z M173.99 0H153.89L141.95 72H162.05Z M168.83 72H224.6L227.4 54.99H191.74L193.53 44.26H226.43L229.14 27.83H196.23L198.02 17.01H233.68L236.48 0H180.77Z"/>
+  <circle cx="358" cy="77" r="9.5" fill="#b8ff3c"/>
+</svg>

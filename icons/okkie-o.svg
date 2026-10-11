@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="O">
+<title>O van OKKIE.: twee ringen met een pijl in de roos; in de veer zit de punt van OKKIE.</title>
+<circle cx="50" cy="50" r="39" fill="none" stroke="#b8ff3c" stroke-width="10"/>
+  <circle cx="50" cy="50" r="16" fill="none" stroke="#b8ff3c" stroke-width="8"/>
+  <g transform="rotate(-45 50 50)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M52 50 H80" stroke="#07120d" stroke-width="11"/>
+    <path d="M78 50 L85 40 L97 38 L92 50 L97 62 L85 60 Z" fill="#07120d" stroke="#07120d" stroke-width="5"/>
+    <path d="M50 50 H59" stroke="#f3eedf" stroke-width="2.2"/>
+    <path d="M59 50 H72" stroke="#f3eedf" stroke-width="7"/>
+    <path d="M62.5 46.5 V53.5 M66 46.5 V53.5 M69.5 46.5 V53.5" stroke="#07120d" stroke-width="1.4"/>
+    <path d="M72 50 H81" stroke="#f3eedf" stroke-width="3"/>
+    <path d="M78 50 L85 40 L97 38 L92 50 L97 62 L85 60 Z" fill="#3ddc84"/>
+    <circle cx="88" cy="50" r="3.6" fill="#b8ff3c"/>
+  </g>
+</svg>
