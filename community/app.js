@@ -1,151 +1,50 @@
-// OKKIE. Community. Nickname + vrijwillig openbaar gemaakte aggregaten.
-// Geen externe trackers. Tokens en herstelcodes blijven lokaal op dit apparaat.
-import { API_BASE, TURNSTILE_SITE_KEY, REGISTRATION_OPEN } from './config.js';
-import { apiAvailable, getAccount, upsertAccount, dropAccount, publicSnapshots, syncAccount, request } from '../js/community-sync.js';
+// OKKIE. Darters. Iedereen ziet het overzicht; elke lokale speler zet met één schakelaar zelf delen aan of uit.
+// Alleen samengevatte cijfers gaan online. Inlog- en herstelcodes blijven op dit toestel.
+import { DARTERS_OPEN } from './config.js';
+import { apiAvailable, getAccount, upsertAccount, dropAccount, readAccounts, publicSnapshots, syncAccount, request } from '../js/community-sync.js';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c =>
   ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 const fmt = (x, digits = 2) => Number(x || 0).toLocaleString('nl-NL', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const per3 = (points, darts) => darts ? points * 3 / darts : null;
 function getLocalData() {
   try {
     const d = JSON.parse(localStorage.getItem('oche.data') || 'null');
     return d && Array.isArray(d.players) && Array.isArray(d.trainings) ? d : null;
   } catch { return null; }
 }
-function activeLocalPlayer(data) {
-  return data?.players?.find(p => p.id === data.activePlayerId) || data?.players?.[0] || null;
-}
 let local = getLocalData();
-let playerId = activeLocalPlayer(local)?.id || '';
-let period = 'week';
-let turnstileToken = '';
-let widgetId = null;
-let lastResult = null;
-let message = '';
-let errorMessage = false;
-let openProfile = null;
+let period = 'all';
+let joining = null;          // speler-ID waarvoor het aanzetformulier open staat
+let message = '', errorMessage = false;
+const online = () => DARTERS_OPEN && apiAvailable();
+function notify(msg, error = false) { message = msg; errorMessage = error; renderPlayers(); }
 
-function notify(msg, error = false) { message = msg; errorMessage = error; renderAccount(); }
-function publicScore(row) {
-  return period === 'week' ? row.challenge30 === null ? null : row.challenge30 / 10 :
-    row.darts ? (row.points * 3) / row.darts : null;
-}
+// ---------- Overzicht (voor iedereen) ----------
+const best = (v, n) => v == null ? '–' : fmt(v / n, 1);
 function renderBoard(result) {
-  lastResult = result;
-  const scores = $('#rankings');
-  if (!result || !result.ranking?.length) {
-    scores.innerHTML = '<div class="empty">Er zijn voor deze periode nog geen openbare scores. Word de eerste!</div>';
+  const mine = new Set(Object.values(readAccounts()).map(a => a?.handle).filter(Boolean));
+  const rows = result?.ranking || [];
+  if (!rows.length) {
+    $('#rankings').innerHTML = '<div class="empty">Nog niemand deelt cijfers voor deze periode. Word de eerste!</div>';
     return;
   }
-  const items = result.ranking.map((row,i) => {
-    const avg = publicScore(row);
-    return '<tr><td class="rank-number">' + (i+1) + '</td><td><button type="button" data-handle="' + esc(row.handle) + '">' + esc(row.nickname) + '</button></td>' +
-      '<td>' + (period === 'week' ? row.challenge30 == null ? '–' : fmt(row.challenge30,0) + ' pt' : fmt(row.points*3/row.darts)) + '</td>' +
-      '<td>' + fmt(row.sessions,0) + '</td><td>' + (avg === null ? '–' : fmt(avg)) + '</td></tr>';
-  }).join('');
-  const col = period === 'week' ? 'Challenge' : 'Gemiddelde';
-  scores.innerHTML = '<div style="overflow-x:auto"><table class="ranking"><thead><tr><th>#</th><th>Speler</th><th>' + col + '</th><th>Trainingen</th><th>3 pijlen</th></tr></thead><tbody>' + items + '</tbody></table></div>' +
-    '<p class="help muted">' + esc(result.scoring) + '. Geen geldprijzen; uitslagen zijn op vertrouwen gebaseerd.</p>';
+  $('#rankings').innerHTML = '<ol class="darters" data-testid="darters-list">' + rows.map((r, i) => {
+    return '<li><span class="d-rank">' + (i + 1) + '</span><div class="d-main"><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' +
+      esc(r.nickname) + (mine.has(r.handle) ? ' <small class="tag">jij</small>' : '') + '</button>' +
+      '<span class="d-meta">' + fmt(r.sessions, 0) + ' trainingen · hoogste beurt ' + fmt(r.highestTurn, 0) +
+      ' · beste 30/60/99: ' + best(r.best30, 10) + ' / ' + best(r.best60, 20) + ' / ' + best(r.best99, 33) + '</span></div>' +
+      '<span class="d-avg" title="gemiddelde per 3 pijlen">' + fmt(per3(r.points, r.darts)) + '</span></li>';
+  }).join('') + '</ol><p class="help muted">Gemiddelde per 3 pijlen, vanaf 30 pijlen in deze periode. Iedereen voert zelf in; geen prijzen.</p>';
 }
-async function refreshLeaderboard() {
-  if (!apiAvailable()) {
-    $('#rankings').innerHTML = '<div class="empty">De publieke ranglijst wordt geactiveerd nadat de online database en privacy-instellingen klaar zijn. Trainen in OKKIE. werkt al gewoon.</div>';
-    return;
-  }
-  $('#rankings').innerHTML = '<p class="muted">Ranglijst laden…</p>';
+async function refreshBoard() {
+  if (!online()) { $('#rankings').innerHTML = '<div class="empty">Darters is nu niet bereikbaar. Trainen in OKKIE. werkt gewoon.</div>'; return; }
   try { renderBoard(await request('/v1/leaderboard?period=' + period)); }
-  catch (e) { $('#rankings').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
-}
-function localSelector() {
-  if (!local?.players?.length) return '<p class="note">Maak eerst een speler aan in de OKKIE.-app op dit apparaat.</p>';
-  return '<label for="localPlayer">Speler op deze telefoon</label><select id="localPlayer">' +
-    local.players.map(p => '<option value="' + esc(p.id) + '"' + (p.id === playerId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select>';
-}
-function renderAccount() {
-  local = getLocalData();
-  if (!local?.players?.some(p => p.id === playerId)) playerId = activeLocalPlayer(local)?.id || '';
-  const root = $('#account');
-  const prefix = localSelector();
-  const note = message ? '<p class="status' + (errorMessage ? ' error' : '') + '" role="status">' + esc(message) + '</p>' : '';
-  if (!playerId) {
-    root.innerHTML = prefix + note + '<a class="btn primary" href="../">Maak eerst je spelersprofiel ↗</a>';
-    return;
-  }
-  const acct = getAccount(playerId);
-  if (!apiAvailable()) {
-    root.innerHTML = prefix + note + '<p class="status pending">De online community is voorbereid maar nog niet verbonden met de database. Je bestaande trainingen blijven veilig lokaal.</p>' +
-      '<p class="note">Zodra de beheerder de cloudservice activeert, kun je je nickname en te delen statistieken instellen.</p>';
-    return;
-  }
-  if (!acct && !REGISTRATION_OPEN) {
-    root.innerHTML = prefix + note +
-      '<p class="status pending">Een openbaar profiel aanmaken kan nog niet. Eerst regelen we de privacyverklaring en toestemming van ouders voor spelers onder 16. De ranglijst kun je al bekijken; je trainingen blijven gewoon op deze telefoon.</p>';
-    return;
-  }
-  if (!acct) {
-    root.innerHTML = prefix + note +
-      '<form id="join" class="recover"><label>Publieke nickname<input name="nickname" minlength="2" maxlength="24" placeholder="Bijv. Dartkoning" required autocomplete="nickname"></label>' +
-      '<label class="check"><input type="checkbox" name="share" required><span>Ik geef toestemming om mijn nickname en samengevatte dartstatistieken openbaar te tonen. Mijn losse worpen en andere lokale spelers blijven privé.</span></label>' +
-      '<label class="check"><input type="checkbox" name="age" required><span>Ik ben 16 jaar of ouder, of ik beheer deze speler als ouder/voogd met toestemming.</span></label>' +
-      '<div id="turnstile-area"></div><button class="action" type="submit"' + (!TURNSTILE_SITE_KEY ? ' disabled' : '') + '>Maak openbaar profiel</button>' +
-      (!TURNSTILE_SITE_KEY ? '<p class="note">Registratie is nog niet geactiveerd.</p>' : '') + '</form>' +
-      '<div class="recover"><details><summary>Heb je al een profiel? Herstellen</summary><form id="recover">' +
-      '<label>Profielcode (12 tekens)<input name="handle" minlength="12" maxlength="12" required autocomplete="off"></label>' +
-      '<label>Geheime herstelcode<input name="recovery" minlength="64" maxlength="64" required autocomplete="off"></label>' +
-      '<button class="action secondary" type="submit">Profiel herstellen</button></form></details></div>';
-    if (TURNSTILE_SITE_KEY) startTurnstile();
-    return;
-  }
-  // Profiel voor Mijn vrienden: besloten, nooit via deze pagina openbaar te maken.
-  if (acct.groupsOnly) {
-    root.innerHTML = prefix + note + '<p class="status">Deze speler heeft een besloten profiel voor <b>Mijn vrienden</b>. Dat is niet openbaar en staat niet in deze ranglijst.</p>' +
-      '<a class="action" href="../vrienden/">Naar Mijn vrienden</a>';
-    return;
-  }
-  const snapshots = publicSnapshots(local, playerId);
-  const total = snapshots.find(x => x.period === 'all');
-  const count = total?.sessions || 0;
-  const avg = total?.darts ? fmt(total.points * 3 / total.darts) : '–';
-  root.innerHTML = prefix + note +
-    '<div class="player-view"><h3>' + esc(acct.nickname || acct.handle) + '</h3>' +
-    '<p class="note">Profielcode: <strong>' + esc(acct.handle) + '</strong></p>' +
-    '<p class="note">Status: <strong>' + (acct.enabled ? 'Openbaar' : 'Verborgen') + '</strong></p>' +
-    '<div class="mini-stats"><div><span>Trainingen</span><b>' + count + '</b></div><div><span>Gemiddelde</span><b>' + avg + '</b></div></div></div>' +
-    '<button type="button" class="action" data-action="sync">Publiceer huidige statistieken</button>' +
-    '<p class="note">' + (acct.lastSync ? 'Laatst bijgewerkt: ' + esc(new Date(acct.lastSync).toLocaleString('nl-NL')) : 'Nog niet bijgewerkt') + '</p>' +
-    '<button type="button" class="action secondary" data-action="visibility">' + (acct.enabled ? 'Profiel verbergen' : 'Profiel openbaar maken') + '</button>' +
-    '<details class="recover"><summary>Nickname en herstelgegevens</summary>' +
-    '<form id="rename"><label>Nieuwe nickname<input name="nickname" minlength="2" maxlength="24" value="' + esc(acct.nickname || '') + '" required></label><button type="submit" class="action secondary">Nickname wijzigen</button></form>' +
-    '<p class="note">Bewaar de profielcode en herstelcode op een veilige plek. Daarmee kun je het profiel op een andere telefoon herstellen. Herstel vanaf een ander toestel beëindigt de oude toegang.</p>' +
-    '<p class="account-code">Profiel: ' + esc(acct.handle) + '<br>Herstelcode: ' + esc(acct.recovery || '(niet op dit toestel beschikbaar)') + '</p>' +
-    '<button type="button" class="action secondary" data-action="copy-recovery">Kopieer herstelgegevens</button>' +
-    '<button type="button" class="action danger" data-action="delete">Verwijder mijn online profiel</button></details>';
-}
-async function startTurnstile() {
-  const slot = $('#turnstile-area');
-  if (!slot) return;
-  turnstileToken = '';
-  const render = () => {
-    const dest = $('#turnstile-area');
-    if (!dest || !window.turnstile) return;
-    try { widgetId = window.turnstile.render(dest, { sitekey: TURNSTILE_SITE_KEY,
-      callback: token => { turnstileToken = token; },
-      'expired-callback': () => { turnstileToken = ''; } }); } catch { /* widget nog niet gereed */ }
-  };
-  if (window.turnstile) return render();
-  if (document.querySelector('script[data-turnstile]')) return;
-  const script = document.createElement('script');
-  script.dataset.turnstile = '1';
-  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-  script.async = true;
-  script.onload = render;
-  document.head.append(script);
+  catch (e) { $('#rankings').innerHTML = '<div class="empty">' + esc(e.message) + ' Probeer het later opnieuw; trainen werkt gewoon.</div>'; }
 }
 async function showProfile(handle) {
   if (!/^[a-z0-9]{12}$/.test(handle)) return;
-  const target = $('#rankings');
-  if (!target) return;
   document.querySelector('#public-profile')?.remove();
   try {
     const r = await request('/v1/players/' + handle);
@@ -153,92 +52,210 @@ async function showProfile(handle) {
     const card = document.createElement('div');
     card.id = 'public-profile';
     card.className = 'player-view';
-    card.innerHTML = '<h3>' + esc(r.player.nickname) + '</h3>' +
-      (t ? '<div class="mini-stats"><div><span>Gemiddelde</span><b>' + fmt(t.darts ? t.points*3/t.darts : 0) + '</b></div>' +
-        '<div><span>Scoretrainingen</span><b>' + fmt(t.sessions,0) + '</b></div>' +
-        '<div><span>Hoogste beurt</span><b>' + fmt(t.highestTurn,0) + '</b></div>' +
-        '<div><span>180 gegooid</span><b>' + fmt(t.hits180,0) + '</b></div></div>' :
-        '<p class="muted">Nog geen openbare training</p>') +
-      '<p class="note">Je ziet alleen gekozen openbare samenvattingen.</p>' +
+    card.innerHTML = '<h3>' + esc(r.player.nickname) + '</h3>' + (t ?
+      '<div class="mini-stats"><div><span>Gemiddelde</span><b>' + fmt(per3(t.points, t.darts)) + '</b></div>' +
+      '<div><span>Trainingen</span><b>' + fmt(t.sessions, 0) + '</b></div><div><span>Hoogste beurt</span><b>' + fmt(t.highestTurn, 0) + '</b></div>' +
+      '<div><span>Beste 30 / 60 / 99</span><b>' + best(t.best30, 10) + ' / ' + best(t.best60, 20) + ' / ' + best(t.best99, 33) + '</b></div>' +
+      '<div><span>100+ / 140+ / 180</span><b>' + fmt(t.hits100, 0) + ' / ' + fmt(t.hits140, 0) + ' / ' + fmt(t.hits180, 0) + '</b></div></div>' +
+      (r.trend?.length ? '<p class="note">Laatste weken: ' + r.trend.slice(0, 6).reverse().map(w => esc(w.period.slice(-3)) + ' ' + fmt(per3(w.points, w.darts), 1)).join(' · ') + '</p>' : '')
+      : '<p class="muted">Nog geen gedeelde training.</p>') +
       '<button type="button" class="action secondary" data-action="close-profile">Sluiten</button>';
-    target.append(card);
-  } catch (e) { notify(e.message,true); }
+    $('#rankings').append(card);
+  } catch (e) { notify(e.message, true); }
 }
+
+// ---------- Jouw spelers: één schakelaar per speler ----------
+function playerBlock(p) {
+  const acct = getAccount(p.id);
+  const on = !!acct?.token && !acct.groupsOnly;
+  const all = publicSnapshots(local, p.id).find(x => x.period === 'all');
+  let body = '';
+  if (joining === p.id) {
+    body = '<form class="d-join" data-join="' + esc(p.id) + '">' +
+      '<label>Naam in het overzicht<input name="nickname" minlength="2" maxlength="24" required value="' + esc(p.name) + '" autocomplete="nickname"></label>' +
+      '<p class="help">Voornaam of bijnaam; gebruik geen achternaam.</p>' +
+      '<fieldset><legend>Leeftijd</legend><label class="check"><input type="radio" name="age" value="adult" required><span>16 jaar of ouder</span></label>' +
+      '<label class="check"><input type="radio" name="age" value="minor"><span>Jonger dan 16 <small>(eerst zegt een ouder of verzorger “ja” via een link)</small></span></label></fieldset>' +
+      '<p class="help">Zichtbaar voor iedereen: deze naam, gemiddelde, aantal trainingen, hoogste beurt en beste 30/60/99. Nooit: losse pijlen of tijdstippen.</p>' +
+      '<div class="d-buttons"><button class="action" type="submit">Delen aanzetten</button><button class="action secondary" type="button" data-action="cancel">Annuleren</button></div></form>';
+  } else if (on && acct.waitingParent) {
+    body = '<p class="status pending">Wacht op toestemming van een ouder of verzorger. Tot dan is niets zichtbaar en bewaren we geen cijfers.</p>' +
+      (acct.consentLink ? '<div class="d-buttons"><button class="action" type="button" data-action="share-parent" data-player="' + esc(p.id) + '">Stuur de link naar je ouder</button>' +
+        '<button class="action secondary" type="button" data-action="copy-parent" data-player="' + esc(p.id) + '">Kopieer link</button></div>' : '') +
+      '<button class="link" type="button" data-action="new-parent" data-player="' + esc(p.id) + '">Nieuwe link maken</button>';
+  } else if (on) {
+    body = '<p class="status">Zichtbaar als <b>' + esc(acct.nickname || p.name) + '</b>' + (all ? ' · ' + all.sessions + ' trainingen · gemiddelde ' + fmt(per3(all.points, all.darts)) : '') + '.</p>' +
+      '<details class="recover"><summary>Naam wijzigen of andere telefoon</summary>' +
+      '<form data-rename="' + esc(p.id) + '"><label>Naam in het overzicht<input name="nickname" minlength="2" maxlength="24" value="' + esc(acct.nickname || '') + '" required></label><button type="submit" class="action secondary">Opslaan</button></form>' +
+      '<p class="note">Op een andere telefoon terugzetten kan met deze gegevens. Bewaar ze privé; terugzetten op een andere telefoon beëindigt de toegang op deze.</p>' +
+      '<p class="account-code">Profiel: ' + esc(acct.handle) + '<br>Herstelcode: ' + esc(acct.recovery || '(niet op dit toestel)') + '</p>' +
+      '<button type="button" class="action secondary" data-action="copy-recovery" data-player="' + esc(p.id) + '">Kopieer herstelgegevens</button></details>';
+  } else if (acct?.groupsOnly) {
+    body = '<p class="note">Deze speler had een besloten profiel uit Mijn vrienden. Dat blijft besloten en staat niet in Darters. Zet delen aan om zichtbaar te worden.</p>';
+  }
+  return '<div class="d-player" data-testid="darter-' + esc(p.id) + '"><div class="d-head"><b>' + esc(p.name) + '</b>' +
+    '<label class="switch"><input type="checkbox" role="switch" data-toggle="' + esc(p.id) + '"' + (on || joining === p.id ? ' checked' : '') + '>' +
+    '<span>Mijn statistieken delen met andere darters</span></label></div>' + body + '</div>';
+}
+function renderPlayers() {
+  local = getLocalData();
+  const root = $('#account');
+  const note = message ? '<p class="status' + (errorMessage ? ' error' : '') + '" role="status">' + esc(message) + '</p>' : '';
+  if (!local?.players?.length) { root.innerHTML = note + '<a class="btn primary" href="../">Maak eerst een speler aan in de app</a>'; return; }
+  if (!online()) { root.innerHTML = note + '<p class="status pending">Delen kan nu niet: Darters is niet bereikbaar. Je trainingen blijven veilig op deze telefoon.</p>'; return; }
+  root.innerHTML = note + local.players.map(playerBlock).join('') +
+    '<details class="recover"><summary>Al gedeeld op een andere telefoon? Hier terugzetten</summary><form id="recover">' +
+    '<label>Speler op deze telefoon<select name="player">' + local.players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') + '</select></label>' +
+    '<label>Profielcode (12 tekens)<input name="handle" minlength="12" maxlength="12" required autocomplete="off"></label>' +
+    '<label>Herstelcode<input name="recovery" minlength="64" maxlength="64" required autocomplete="off"></label>' +
+    '<button class="action secondary" type="submit">Terugzetten</button></form></details>';
+}
+const parentUrl = token => location.origin + location.pathname + '#ouder=' + token;
+async function shareParent(acct) {
+  const text = `Mag ${acct.nickname} zijn of haar dartscores delen in OKKIE. Darters? Bekijk het en geef toestemming: ${acct.consentLink}`;
+  if (navigator.share) { try { await navigator.share({ text }); return; } catch { /* geannuleerd */ } }
+  location.href = 'https://wa.me/?text=' + encodeURIComponent(text);
+}
+// Wacht een kind op toestemming? Kijk of de ouder intussen "ja" heeft gezegd en verstuur dan de cijfers.
+async function refreshWaiting() {
+  for (const p of local?.players || []) {
+    const acct = getAccount(p.id);
+    if (!acct?.token || !acct.waitingParent) continue;
+    try {
+      const me = await request('/v1/me', 'GET', null, acct.token);
+      if (me.enabled) { upsertAccount(p.id, { ...acct, waitingParent: false, consentLink: null }); await syncAccount(getLocalData(), p.id); message = acct.nickname + ' is nu zichtbaar in Darters.'; }
+    } catch (e) { if (/Niet ingelogd/.test(e.message)) { dropAccount(p.id); message = 'Toestemming is ingetrokken; ' + p.name + ' deelt niet meer.'; } }
+  }
+  renderPlayers(); refreshBoard();
+}
+
+// ---------- Ouder of verzorger (link uit WhatsApp, zonder account) ----------
+let parentToken = (location.hash.match(/ouder=([a-f0-9]{64})/) || [])[1];
+if (parentToken) history.replaceState(null, '', location.pathname);
+// De link kan ook binnenkomen terwijl deze pagina al open is (alleen het #-deel verandert).
+addEventListener('hashchange', () => {
+  const t = (location.hash.match(/ouder=([a-f0-9]{64})/) || [])[1];
+  if (!t) return;
+  parentToken = t; history.replaceState(null, '', location.pathname); renderParent();
+});
+async function renderParent() {
+  const box = $('#parent');
+  try {
+    const c = await request('/v1/darters/consent/preview', 'POST', { token: parentToken });
+    box.innerHTML = '<section class="card parent" data-testid="parent-view"><h2>Toestemming voor ' + esc(c.child) + '</h2>' +
+      (c.confirmed ? '<p class="status">Je hebt toestemming gegeven. ' + esc(c.child) + ' staat in Darters.</p>' +
+        '<button class="action danger" type="button" data-action="withdraw">Toestemming intrekken en alles online wissen</button>' :
+        '<p><b>' + esc(c.child) + '</b> wil zijn of haar dartscores delen in OKKIE. Darters. Dat overzicht is voor iedereen te bekijken.</p>' +
+        '<p>Zichtbaar: de naam “' + esc(c.child) + '”, gemiddelde, aantal trainingen, hoogste beurt en beste 30/60/99. Nooit zichtbaar: losse pijlen, tijdstippen, achternaam, foto’s of berichten. OKKIE. heeft geen chat.</p>' +
+        '<label class="check"><input type="checkbox" id="is-parent"><span>Ik ben de ouder of verzorger</span></label>' +
+        '<div class="d-buttons"><button class="action" type="button" data-action="confirm">Ik geef toestemming</button></div>' +
+        '<p class="note">Je kunt later via deze link de toestemming intrekken; dan wissen we alles online. Link geldig tot ' + esc(c.expiresAt) + '.</p>') +
+      '<p class="note"><a href="https://okkiedarts.nl/privacy/#darters" target="_blank" rel="noopener">Privacyverklaring</a></p></section>';
+  } catch (e) { box.innerHTML = '<section class="card parent"><h2>Deze link werkt niet meer</h2><p>' + esc(e.message) + '</p></section>'; }
+}
+
+// ---------- Acties ----------
 document.addEventListener('click', async e => {
   const tab = e.target.closest('[data-period]');
   if (tab) {
     period = tab.dataset.period;
     document.querySelectorAll('[data-period]').forEach(x => x.classList.toggle('active', x === tab));
-    refreshLeaderboard();
-    return;
+    return refreshBoard();
   }
-  const handle = e.target.closest('[data-handle]');
-  if (handle) { showProfile(handle.dataset.handle); return; }
+  const h = e.target.closest('[data-handle]');
+  if (h) return showProfile(h.dataset.handle);
   const button = e.target.closest('[data-action]');
   if (!button) return;
-  const acct = getAccount(playerId);
-  if (button.dataset.action === 'close-profile') return document.querySelector('#public-profile')?.remove();
-  if (!acct) return;
+  const act = button.dataset.action, pid = button.dataset.player;
+  const acct = pid ? getAccount(pid) : null;
   try {
     button.disabled = true;
-    if (button.dataset.action === 'sync') {
-      await syncAccount(getLocalData(), playerId);
-      message = 'Je openbare cijfers zijn bijgewerkt.';
-    } else if (button.dataset.action === 'visibility') {
-      const r = await request('/v1/me','PATCH',{ enabled: !acct.enabled },acct.token);
-      upsertAccount(playerId,{ ...acct, enabled:r.enabled });
-      message = r.enabled ? 'Je profiel is nu zichtbaar.' : 'Je profiel is verborgen.';
-    } else if (button.dataset.action === 'copy-recovery') {
-      await navigator.clipboard.writeText('OKKIE-profiel: ' + acct.handle + '\nHerstelcode: ' + acct.recovery);
-      message = 'Herstelgegevens gekopieerd. Bewaar ze privé.';
-    } else if (button.dataset.action === 'delete') {
-      if (!confirm('Online profiel en alle gedeelde statistieken definitief verwijderen? Je lokale trainingen blijven bewaard.')) return;
-      await request('/v1/me','DELETE',null,acct.token);
-      dropAccount(playerId);
-      message = 'Online profiel verwijderd. Lokale trainingen zijn behouden.';
+    if (act === 'close-profile') document.querySelector('#public-profile')?.remove();
+    else if (act === 'cancel') { joining = null; renderPlayers(); }
+    else if (act === 'copy-recovery' && acct) { await navigator.clipboard.writeText('OKKIE-profiel: ' + acct.handle + '\nHerstelcode: ' + acct.recovery); notify('Herstelgegevens gekopieerd. Bewaar ze privé.'); }
+    else if (act === 'share-parent' && acct) await shareParent(acct);
+    else if (act === 'copy-parent' && acct) { await navigator.clipboard.writeText(acct.consentLink); notify('Link gekopieerd. Stuur hem naar je ouder of verzorger.'); }
+    else if (act === 'new-parent' && acct) {
+      const r = await request('/v1/darters/consent/request', 'POST', {}, acct.token);
+      if (r.confirmed) return refreshWaiting();
+      upsertAccount(pid, { ...acct, consentLink: parentUrl(r.consentToken) }); notify('Nieuwe link gemaakt (7 dagen geldig).');
+    } else if (act === 'confirm') {
+      if (!$('#is-parent')?.checked) throw new Error('Vink eerst aan dat je de ouder of verzorger bent.');
+      await request('/v1/darters/consent/confirm', 'POST', { token: parentToken, parent: true }); await renderParent(); refreshBoard();
+    } else if (act === 'withdraw') {
+      if (!confirm('Toestemming intrekken? Het profiel en alle gedeelde cijfers worden online gewist. De trainingen op de telefoon blijven.')) return;
+      await request('/v1/darters/consent/withdraw', 'POST', { token: parentToken });
+      $('#parent').innerHTML = '<section class="card parent"><h2>Toestemming ingetrokken</h2><p>Alles is online gewist. De trainingen op de telefoon van je kind blijven bewaard.</p></section>';
+      refreshBoard();
     }
-    errorMessage = false;
-    renderAccount();
-    refreshLeaderboard();
   } catch (err) { notify(err.message, true); }
-  finally { button.disabled = false; }
+  finally { if (button.isConnected) button.disabled = false; }
 });
-document.addEventListener('change', e => {
-  if (e.target.id === 'localPlayer') { playerId = e.target.value; message=''; renderAccount(); }
+document.addEventListener('change', async e => {
+  const pid = e.target.dataset?.toggle;
+  if (!pid) return;
+  const acct = getAccount(pid);
+  const on = !!acct?.token && !acct.groupsOnly;
+  if (e.target.checked && !on) {
+    if (acct?.groupsOnly) {
+      // Oud besloten profiel: alleen na deze bewuste keuze zichtbaar maken (een kind eerst met toestemming).
+      try {
+        const r = await request('/v1/me', 'PATCH', { enabled: true }, acct.token);
+        upsertAccount(pid, { ...acct, groupsOnly: false, enabled: r.enabled });
+        await syncAccount(getLocalData(), pid); notify('Delen staat aan.'); refreshBoard();
+      } catch (err) {
+        if (/ouder of verzorger/.test(err.message)) {
+          const r = await request('/v1/darters/consent/request', 'POST', {}, acct.token);
+          upsertAccount(pid, { ...acct, groupsOnly: false, waitingParent: true, consentLink: parentUrl(r.consentToken) }); notify('Vraag nu een ouder of verzorger om toestemming.');
+        } else notify(err.message, true);
+      }
+      return;
+    }
+    joining = pid; message = ''; renderPlayers();
+    document.querySelector('[data-join] input[name=nickname]')?.focus();
+  } else if (!e.target.checked && on) {
+    if (!confirm('Delen uitzetten? Je verdwijnt meteen uit Darters en je gedeelde cijfers worden online gewist. Je trainingen op deze telefoon blijven.')) { e.target.checked = true; return; }
+    try {
+      await request('/v1/me', 'DELETE', null, acct.token);
+      dropAccount(pid); notify('Delen staat uit. Je staat niet meer in Darters; je trainingen blijven op deze telefoon.'); refreshBoard();
+    } catch (err) { e.target.checked = true; notify(err.message, true); }
+  } else if (!e.target.checked && joining === pid) { joining = null; renderPlayers(); }
 });
 document.addEventListener('submit', async e => {
   const form = e.target;
-  if (!['join','recover','rename'].includes(form.id)) return;
-  e.preventDefault();
-  if (!playerId) return;
-  const current = getAccount(playerId);
   const fd = new FormData(form);
+  if (!form.matches('[data-join], [data-rename], #recover')) return;
+  e.preventDefault();
+  const btn = form.querySelector('[type=submit]');
+  if (btn) btn.disabled = true;
   try {
-    if (form.id === 'join') {
-      if (!turnstileToken) return notify('Voltooi eerst de anti-spamcontrole.',true);
-      const r = await request('/v1/register','POST',{
-        nickname: String(fd.get('nickname') || ''), share: fd.get('share') === 'on',
-        ageConsent: fd.get('age') === 'on', turnstileToken
-      });
-      upsertAccount(playerId,{ ...r.account,token:r.token,recovery:r.recovery,enabled:true,lastSync:null });
-      await syncAccount(getLocalData(), playerId);
-      notify('Profiel aangemaakt. Bewaar de herstelcode via Nickname en herstelgegevens.');
-      refreshLeaderboard();
+    if (form.dataset.join) {
+      const pid = form.dataset.join;
+      const age = fd.get('age');
+      if (!age) throw new Error('Kies je leeftijd.');
+      const r = await request('/v1/darters/join', 'POST', { nickname: String(fd.get('nickname') || ''), age });
+      upsertAccount(pid, { ...r.account, token: r.token, recovery: r.recovery, enabled: true, lastSync: null,
+        waitingParent: !!r.needsParent, consentLink: r.consentToken ? parentUrl(r.consentToken) : null });
+      joining = null;
+      if (r.needsParent) { notify('Bijna klaar: stuur de link naar je ouder of verzorger. Tot die “ja” zegt, is niets zichtbaar.'); return; }
+      await syncAccount(getLocalData(), pid);
+      notify('Delen staat aan. Na elke training worden je cijfers vanzelf bijgewerkt.'); refreshBoard();
+    } else if (form.dataset.rename) {
+      const pid = form.dataset.rename, acct = getAccount(pid);
+      const r = await request('/v1/me', 'PATCH', { nickname: String(fd.get('nickname') || '') }, acct.token);
+      upsertAccount(pid, { ...acct, nickname: r.account.nickname }); notify('Naam aangepast.'); refreshBoard();
+    } else {
+      const pid = String(fd.get('player'));
+      const r = await request('/v1/recover', 'POST', { handle: String(fd.get('handle') || '').trim(), recovery: String(fd.get('recovery') || '').trim() });
+      upsertAccount(pid, { ...r.account, token: r.token, recovery: r.recovery, enabled: true, lastSync: null });
+      notify('Je profiel staat nu op deze telefoon. Trainingen van je oude telefoon tellen niet automatisch mee; gebruik daarvoor een back-up of overzetcode.');
+      refreshBoard();
     }
-    if (form.id === 'recover') {
-      const r = await request('/v1/recover','POST',{handle:String(fd.get('handle')||'').trim(),recovery:String(fd.get('recovery')||'').trim()});
-      upsertAccount(playerId,{...r.account,token:r.token,recovery:r.recovery,enabled:r.enabled,lastSync:null});
-      await syncAccount(getLocalData(),playerId);
-      notify('Je profiel is hersteld op dit toestel.');
-      refreshLeaderboard();
-    }
-    if (form.id === 'rename' && current) {
-      const r = await request('/v1/me','PATCH',{ nickname:String(fd.get('nickname')||'') },current.token);
-      upsertAccount(playerId,{...current,nickname:r.account.nickname});
-      notify('Nickname aangepast.');
-      refreshLeaderboard();
-    }
-  } catch (err) { notify(err.message,true); }
+  } catch (err) { notify(err.message, true); }
+  finally { if (btn?.isConnected) btn.disabled = false; }
 });
-renderAccount();
-refreshLeaderboard();
+
+if (parentToken) renderParent();
+renderPlayers();
+refreshBoard();
+if (online()) refreshWaiting();

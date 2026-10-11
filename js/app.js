@@ -13,7 +13,7 @@ import * as T from './transfer.js';
 import * as I from './install.js';
 import { DARTCOUNTER_SET, dartCounterTrainings, hasDartCounterSet } from './imports.js';
 
-export const APP_VERSION = '1.4.1';
+export const APP_VERSION = '1.5.0';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -321,11 +321,8 @@ VIEWS.home = () => {
       <button class="action stats" data-go="stats">
         <span class="a-icon">${icon('stats')}</span><span><b>Mijn statistieken</b><small>Word ik beter?</small></span>
       </button>
-      <a class="action stats" href="./vrienden/" aria-label="Open Mijn vrienden">
-        <span class="a-icon">${icon('friends')}</span><span><b>Mijn vrienden</b><small>Besloten groep met je vrienden</small></span>
-      </a>
-      <a class="action stats" href="./community/" aria-label="Open de community-ranglijst">
-        <span class="a-icon">${icon('trophy')}</span><span><b>Community</b><small>Vergelijk je scores met anderen</small></span>
+      <a class="action stats" href="./community/" aria-label="Open Darters" data-testid="darters-link">
+        <span class="a-icon">${icon('trophy')}</span><span><b>Darters</b><small>Bekijk andere darters en deel zelf je cijfers</small></span>
       </a>
     </section>
     ${o.count < 3 ? `<section class="card next-badge"><span class="a-icon">${icon('book')}</span><div><b>Nieuw? Zo werkt OKKIE.</b><p>Leer scoren met een oefenbeurt van 3 pijlen.</p></div><a class="btn secondary small" href="./uitleg/">Uitleg</a></section>` : ''}
@@ -945,19 +942,14 @@ VIEWS.more = () => {
     </section>
     <section class="card" data-testid="other-phone">
       <h3>Darten op een andere telefoon</h3>
-      <p class="muted">Gooi je mee bij een vriend? Maak een koppelcode; je vriend vult hem in bij Trainen. Jouw training komt daarna bij je eigen statistieken. Werkt met een profiel van Mijn vrienden.</p>
-      ${getAccount(data.activePlayerId) ? '<button class="btn secondary" data-act="guest-pass">Maak koppelcode</button>' : '<a class="btn secondary" href="./vrienden/">Eerst een profiel via Mijn vrienden ↗</a>'}
+      <p class="muted">Gooi je mee bij een vriend? Maak een koppelcode; je vriend vult hem in bij Trainen. Jouw training komt daarna bij je eigen statistieken. Werkt als je bij Darters delen hebt aangezet.</p>
+      ${getAccount(data.activePlayerId) ? '<button class="btn secondary" data-act="guest-pass">Maak koppelcode</button>' : '<a class="btn secondary" href="./community/">Eerst delen aanzetten bij Darters ↗</a>'}
       ${G.readGuest().queue.length ? `<p class="note" data-testid="guest-queue">${G.readGuest().queue.length} training(en) van gasten wacht(en) op internet om verstuurd te worden.${G.readGuest().queue.some(q => q.error) ? ' Eén of meer codes werken niet meer; vraag een nieuwe code en koppel opnieuw.' : ''}</p><button class="btn ghost small" data-act="guest-retry">Nu versturen</button>` : ''}
     </section>
     <section class="card">
-      <h3>Mijn vrienden</h3>
-      <p class="muted">Een besloten groep om met vrienden gemiddelden, records en de weekchallenge te vergelijken. Je kiest zelf wat je deelt.</p>
-      <a class="btn secondary" href="./vrienden/">Open Mijn vrienden ↗</a>
-    </section>
-    <section class="card">
-      <h3>Community en ranglijst</h3>
-      <p class="muted">Bekijk openbare scores van andere spelers. Delen van jouw cijfers is vrijwillig: alleen een nickname en statistieken.</p>
-      <a class="btn secondary" href="./community/">${icon('trophy', { size: 19 })}Open OKKIE. Community</a>
+      <h3>Darters</h3>
+      <p class="muted">Bekijk de cijfers van andere darters. Per speler zet je zelf met één schakelaar aan of jouw cijfers zichtbaar zijn; standaard staat dat uit. Losse pijlen blijven altijd op deze telefoon.</p>
+      <a class="btn secondary" href="./community/">${icon('trophy', { size: 19 })}Open Darters</a>
     </section>
     <section class="card" data-testid="other-app">
       <h3>Scores uit een andere app</h3>
@@ -1633,7 +1625,7 @@ const ACTIONS = {
     modal(`<h3>Naam wijzigen</h3><form data-form="rename" data-arg="${esc(id)}"><input name="name" maxlength="24" value="${esc(p.name)}" aria-label="Nieuwe naam" required><div class="modal-actions"><button type="button" class="btn ghost" data-act="modal-close">Annuleren</button><button class="btn primary">Opslaan</button></div></form>`);
   },
   'delete-player': id => {
-    if (getAccount(id)) return modal('<h3>Eerst online profiel verwijderen</h3><p>Deze speler heeft een gekoppeld openbaar profiel. Verwijder of verberg dat eerst via Community, zodat je de toegang tot je gedeelde statistieken niet kwijtraakt.</p><div class="modal-actions"><a class="btn primary" href="./community/">Naar Community</a><button class="btn ghost" data-act="modal-close">Sluiten</button></div>');
+    if (getAccount(id)) return modal('<h3>Eerst online profiel verwijderen</h3><p>Deze speler heeft een gekoppeld openbaar profiel. Zet eerst bij Darters delen uit voor deze speler; dan worden de gedeelde cijfers online gewist.</p><div class="modal-actions"><a class="btn primary" href="./community/">Naar Darters</a><button class="btn ghost" data-act="modal-close">Sluiten</button></div>');
     const p = player(id);
     const n = data.trainings.filter(t => t.playerId === id).length;
     confirmBox(`${p.name} verwijderen?`, `Ook ${n} training(en) van ${p.name} worden verwijderd. Wedstrijden blijven bewaard. Tip: maak eerst een back-up.`, 'Verwijderen', () => {

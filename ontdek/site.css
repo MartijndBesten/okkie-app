@@ -72,3 +72,11 @@ html:not(.js) .js-only{display:none}
 .wordmark{display:inline-flex;align-items:center}.wordmark .logo-img{display:block;height:30px;width:auto}
 .mini-logo{display:inline-flex;align-items:center}.mini-logo img{display:block;height:22px;width:auto}
 @media(max-width:420px){.wordmark .logo-img{height:26px}}
+
+/* Veelgestelde vragen */
+.faq-list{display:grid;gap:10px;max-width:820px}
+.faq-list details{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 20px}
+.faq-list summary{cursor:pointer;font-weight:700;list-style-position:outside}
+.faq-list summary:focus-visible{outline:2px solid currentColor;outline-offset:4px;border-radius:6px}
+.faq-list details p{margin:10px 0 0;font-size:15px}
+.install .subtle{max-width:640px;margin:16px auto 22px}

@@ -10,7 +10,9 @@ export const TURNSTILE_SITE_KEY = '';
 // Openbare registratie: pas op true na privacyverklaring en ouderlijke toestemming (<16). De API weigert
 // registratie daarnaast zelf zolang REGISTRATION_ENABLED in de Worker niet "true" is.
 export const REGISTRATION_OPEN = false;
-// Mijn vrienden (besloten groepen) staat aan sinds 1.4.0; de API controleert daarnaast zelf GROUPS_ENABLED.
-export const GROUPS_OPEN = LOCAL ? DEV.groups === true : true;
+// Mijn vrienden (besloten groepen) is sinds 1.5.0 vervangen door Darters en staat uit (gegevens blijven bewaard).
+export const GROUPS_OPEN = LOCAL ? DEV.groups === true : false;
+// Darters: openbaar overzicht en één schakelaar per speler (API: DARTERS_ENABLED).
+export const DARTERS_OPEN = LOCAL ? !!DEV.api : true;
 // Jonger dan 16: dicht tot juridische toets en DPIA (cloud/VRIENDEN.md §4). De API weigert het ook zelf (MINORS_OPEN).
 export const MINORS_OPEN = LOCAL ? DEV.minors === true : false;

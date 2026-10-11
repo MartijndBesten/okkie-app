@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#07120d">
-  <title>Community & ranglijst — OKKIE.</title>
-  <meta name="description" content="Vergelijk je dartstatistieken met andere OKKIE-spelers. Alleen een nickname en zelf gekozen openbare cijfers.">
+  <title>Darters — OKKIE.</title>
+  <meta name="description" content="Bekijk de cijfers van andere OKKIE.-darters. Iedere speler kiest zelf met één schakelaar of zijn eigen cijfers zichtbaar zijn.">
   <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="../icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
@@ -13,40 +13,41 @@
 </head>
 <body>
 <header class="topbar">
-  <a class="wordmark" href="https://okkiedarts.nl/" aria-label="OKKIE beginpagina"><img class="logo-img" src="../icons/logo.svg" alt="OKKIE." width="112" height="30"></a>
-  <nav aria-label="Navigatie"><a href="https://okkiedarts.nl/">Over OKKIE.</a><a class="nav-cta" href="../">Terug naar app ↗</a></nav>
+  <a class="wordmark" href="../" aria-label="OKKIE., terug naar de app"><img class="logo-img" src="../icons/logo.svg" alt="OKKIE." width="112" height="30"></a>
+  <nav aria-label="Navigatie"><a href="https://okkiedarts.nl/">Over OKKIE.</a><a class="nav-cta" href="../">Terug naar app</a></nav>
 </header>
-<main class="community-wrap">
+<main class="community-wrap" id="inhoud">
   <header class="community-title">
-    <div class="eyebrow">De OKKIE. community</div>
-    <h1>Met wie gooi jij <em>mee?</em></h1>
-    <p>Bekijk gemiddelden en de 30-pijlenchallenge van andere darters. Jouw trainingen blijven privé op je eigen toestel.</p>
+    <div class="eyebrow">Darters</div>
+    <h1>Hoe gooien <em>de anderen?</em></h1>
+    <p>Hier zie je de darters die hun cijfers delen. Delen is voor elke speler apart en staat standaard uit. Jouw losse pijlen blijven altijd op je eigen telefoon.</p>
   </header>
-  <section class="columns" aria-label="Community">
+  <div id="parent"></div>
+  <section class="columns" aria-label="Darters">
     <div class="leaderboard card">
-      <div class="split"><h2>Ranglijst</h2><span class="tag">Alleen openbare profielen</span></div>
+      <div class="split"><h2>Darters</h2><span class="tag">Alleen wie zelf deelt</span></div>
       <div class="tabs" role="group" aria-label="Periode">
-        <button class="active" data-period="week" type="button">Deze week</button>
+        <button class="active" data-period="all" type="button">Alle tijden</button>
         <button data-period="month" type="button">Deze maand</button>
-        <button data-period="all" type="button">Alle tijden</button>
+        <button data-period="week" type="button">Deze week</button>
       </div>
       <div id="rankings" aria-live="polite"><p class="muted">Laden…</p></div>
     </div>
     <aside class="account card">
-      <h2>Jouw profiel</h2>
-      <p class="muted">Je kiest zelf of en welke speler je zichtbaar maakt.</p>
+      <h2>Jouw spelers</h2>
+      <p class="muted">Per speler op deze telefoon: zelf kiezen of je cijfers zichtbaar zijn.</p>
       <div id="account" aria-live="polite"></div>
     </aside>
   </section>
   <section class="privacy card">
-    <h2>Wat delen we wel en niet?</h2>
+    <h2>Wat is zichtbaar?</h2>
     <div class="privacy-grid">
-      <div><h3>Wel openbaar, na jouw toestemming</h3><p>Nickname, gemiddelde per drie pijlen, aantal trainingen, beste beurt en score van de eerste 30-pijlentraining per week.</p></div>
-      <div><h3>Blijft op jouw telefoon</h3><p>Alle afzonderlijke pijlen, exacte trainingsmomenten, privéwedstrijden en andere lokale spelersprofielen die je niet koppelt.</p></div>
+      <div><h3>Zichtbaar als je delen aanzet</h3><p>Je voornaam of bijnaam, je gemiddelde per drie pijlen, het aantal trainingen, je hoogste beurt en je beste training over 30, 60 en 99 pijlen.</p></div>
+      <div><h3>Blijft op je telefoon</h3><p>Losse pijlen, tijdstippen, wedstrijden en andere spelers op je telefoon die niet delen.</p></div>
     </div>
-    <p class="small-note">Een openbaar profiel is door iedereen via de website te bekijken. Gebruik geen volledige naam of andere persoonsgegevens als nickname. Profielen van kinderen jonger dan 16 jaar mogen alleen onder beheer en toestemming van een ouder/voogd worden gedeeld. Deze functie wordt pas ingeschakeld nadat het beheer en de privacyvoorwaarden zijn gecontroleerd.</p>
+    <p class="small-note">Zet je delen uit, dan verdwijn je meteen uit het overzicht en wissen we je gedeelde cijfers online. Gebruik een bijnaam, geen volledige naam. Ben je jonger dan 16, dan zegt eerst een ouder of verzorger “ja” via een link. Meer in de <a href="https://okkiedarts.nl/privacy/#darters" target="_blank" rel="noopener">privacyverklaring</a>.</p>
   </section>
-  <p class="end-link"><a class="btn outline" href="../">Terug naar de darttrainer ↗</a></p>
+  <p class="end-link"><a class="btn outline" href="../">Terug naar de darttrainer</a></p>
 </main>
 <footer><div class="footer-inside"><strong>OKKIE.</strong><span>Gooi. Scoor. Word beter.</span><a class="maker" href="https://denckh.nl/" aria-label="Ontwikkeld door Denckh (naar denckh.nl)"><span class="maker-role">Ontwikkeld door</span><img src="../icons/denckh-logo-signature-light.svg" alt="Denckh" width="92" height="28"></a></div></footer>
 <script type="module" src="./app.js"></script>

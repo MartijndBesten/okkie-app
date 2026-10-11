@@ -77,10 +77,13 @@ function shareChoices(current = null, legend = 'Wat deel je met deze groep?') {
 const readShare = form => Object.fromEntries(Object.keys(SHARE_LABELS).map(k => [k, !!form.elements['share-' + k]?.checked]));
 
 function unavailable() {
-  $('#vr').innerHTML = `<section class="card"><h2>Binnenkort beschikbaar</h2>
-    <p>Met <b>Mijn vrienden</b> maak je straks een besloten groep, nodig je vrienden uit met een link en vergelijk je gemiddelden, records en de weekchallenge.</p>
-    <p class="muted">Voor jong en oud. We zetten het aan zodra de privacyafspraken helemaal geregeld zijn. Trainen in OKKIE. werkt gewoon, zonder account en zonder internet.</p>
-    <a class="btn primary" href="../">Verder trainen</a></section>`;
+  // Sinds 1.5.0 vervangen door Darters (openbaar overzicht, één schakelaar per speler). Besloten groepsgegevens blijven
+  // online bewaard en worden nooit automatisch openbaar.
+  $('#vr').innerHTML = `<section class="card"><h2>Mijn vrienden heet nu Darters</h2>
+    <p>In <b>Darters</b> zie je de cijfers van alle darters die delen. Per speler zet je zelf met één schakelaar aan of jouw cijfers zichtbaar zijn.</p>
+    <p class="muted">Groepen en uitnodigingen zijn er niet meer. Een besloten profiel van vroeger blijft besloten tot je zelf delen aanzet. Trainen in OKKIE. werkt gewoon, ook zonder internet.</p>
+    <a class="btn primary" href="../community/">Naar Darters</a>
+    <a class="btn outline" href="../">Verder trainen</a></section>`;
 }
 
 // Nog geen online profiel voor deze speler: alleen via uitnodiging (of oprichterscode) een besloten profiel maken.
