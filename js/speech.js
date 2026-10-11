@@ -26,7 +26,8 @@ export function say(text, { lang = 'nl-NL', rate = 1, pitch = 1, priority = fals
   const t = Date.now();
   if (text === lastSaid && t - lastAt < 8000) return false;   // nooit twee keer hetzelfde achter elkaar
   try {
-    if (priority) s.cancel();
+    // Alleen onderbreken als er echt iets klinkt: direct na cancel() slikt Safari soms de volgende zin in.
+    if (priority && (s.speaking || s.pending)) s.cancel();
     else if (s.pending) return false;
     if (s.paused) s.resume();
     const u = new SpeechSynthesisUtterance(text);

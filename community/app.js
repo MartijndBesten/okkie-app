@@ -1,7 +1,7 @@
 // OKKIE. Darters. Iedereen ziet het overzicht; elke lokale speler zet met één schakelaar zelf delen aan of uit.
 // Alleen samengevatte cijfers gaan online. Inlog- en herstelcodes blijven op dit toestel.
 import { DARTERS_OPEN } from './config.js';
-import { apiAvailable, getAccount, upsertAccount, dropAccount, readAccounts, publicSnapshots, syncAccount, request } from '../js/community-sync.js';
+import { apiAvailable, getAccount, upsertAccount, dropAccount, publicSnapshots, syncAccount, request } from '../js/community-sync.js';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c =>
@@ -24,18 +24,18 @@ function notify(msg, error = false) { message = msg; errorMessage = error; rende
 // ---------- Overzicht (voor iedereen) ----------
 const best = (v, n) => v == null ? '–' : fmt(v / n, 1);
 function renderBoard(result) {
-  const mine = new Set(Object.values(readAccounts()).map(a => a?.handle).filter(Boolean));
   const rows = result?.ranking || [];
   if (!rows.length) {
     $('#rankings').innerHTML = '<div class="empty">Nog niemand deelt cijfers voor deze periode. Word de eerste!</div>';
     return;
   }
   $('#rankings').innerHTML = '<ol class="darters" data-testid="darters-list">' + rows.map((r, i) => {
-    return '<li><span class="d-rank">' + (i + 1) + '</span><div class="d-main"><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' +
-      esc(r.nickname) + (mine.has(r.handle) ? ' <small class="tag">jij</small>' : '') + '</button>' +
-      '<span class="d-meta">' + fmt(r.sessions, 0) + ' trainingen · hoogste beurt ' + fmt(r.highestTurn, 0) +
-      ' · beste 30/60/99: ' + best(r.best30, 10) + ' / ' + best(r.best60, 20) + ' / ' + best(r.best99, 33) + '</span></div>' +
-      '<span class="d-avg" title="gemiddelde per 3 pijlen">' + fmt(per3(r.points, r.darts)) + '</span></li>';
+    // Beste trainingen alleen tonen als ze er zijn (30/60/99 pijlen); alles staat ook in het profiel (tik op de naam).
+    const bests = [[30, r.best30, 10], [60, r.best60, 20], [99, r.best99, 33]].filter(([, v]) => v != null).map(([n, v, t]) => 'beste ' + n + ' <b>' + best(v, t) + '</b>');
+    return '<li><span class="d-rank">' + (i + 1) + '</span><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' + esc(r.nickname) + '</button>' +
+      '<span class="d-avg" title="gemiddelde per 3 pijlen"><small>gem.</small> <strong>' + fmt(per3(r.points, r.darts)) + '</strong></span>' +
+      '<span class="d-stats"><span><b>' + fmt(r.sessions, 0) + '</b> ' + (r.sessions === 1 ? 'training' : 'trainingen') + '</span><span>hoogste beurt <b>' + fmt(r.highestTurn, 0) + '</b></span>' +
+      bests.map(x => '<span>' + x + '</span>').join('') + '</span></li>';
   }).join('') + '</ol><p class="help muted">Gemiddelde per 3 pijlen, vanaf 30 pijlen in deze periode. Iedereen voert zelf in; geen prijzen.</p>';
 }
 async function refreshBoard() {
@@ -62,6 +62,17 @@ async function showProfile(handle) {
       '<button type="button" class="action secondary" data-action="close-profile">Sluiten</button>';
     $('#rankings').append(card);
   } catch (e) { notify(e.message, true); }
+}
+
+function showDuplicateHint(form, nickname) {
+  form.querySelector('.dup')?.remove();
+  const box = document.createElement('div');
+  box.className = 'dup status';
+  box.setAttribute('role', 'alert');
+  box.innerHTML = '<p><b>Er staat al een ‘' + esc(nickname) + '’ in Darters.</b> Ben jij dat, vanaf een andere telefoon of uit Safari? Zet dat profiel dan hier terug; dan ontstaat er geen tweede.</p>' +
+    '<div class="d-buttons"><button class="action secondary" type="button" data-action="open-recover">Mijn profiel terugzetten</button></div>' +
+    '<p class="note">Is het iemand anders? Kies dan liever een andere naam, of tik nog een keer op <b>Delen aanzetten</b> voor een nieuw profiel.</p>';
+  form.querySelector('.d-buttons').before(box);
 }
 
 // ---------- Jouw spelers: één schakelaar per speler ----------
@@ -104,7 +115,8 @@ function renderPlayers() {
   if (!local?.players?.length) { root.innerHTML = note + '<a class="btn primary" href="../">Maak eerst een speler aan in de app</a>'; return; }
   if (!online()) { root.innerHTML = note + '<p class="status pending">Delen kan nu niet: Darters is niet bereikbaar. Je trainingen blijven veilig op deze telefoon.</p>'; return; }
   root.innerHTML = note + local.players.map(playerBlock).join('') +
-    '<details class="recover"><summary>Al gedeeld op een andere telefoon? Hier terugzetten</summary><form id="recover">' +
+    '<details class="recover" id="recover-box"><summary>Al gedeeld op een andere telefoon, of twee keer in de lijst?</summary>' +
+    '<p class="note">Sta je er twee keer in? Dan is er per ongeluk een tweede profiel gemaakt, bijvoorbeeld in Safari én in de app op je beginscherm. Open OKKIE. op de plek waar het profiel staat dat weg mag en zet daar bij Darters delen uit: dat profiel en de cijfers ervan verdwijnen dan. Je trainingen blijven gewoon bewaard. Het profiel van een andere telefoon hierheen halen kan hieronder, met de profiel- en herstelcode van die telefoon.</p><form id="recover">' +
     '<label>Speler op deze telefoon<select name="player">' + local.players.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('') + '</select></label>' +
     '<label>Profielcode (12 tekens)<input name="handle" minlength="12" maxlength="12" required autocomplete="off"></label>' +
     '<label>Herstelcode<input name="recovery" minlength="64" maxlength="64" required autocomplete="off"></label>' +
@@ -172,6 +184,7 @@ document.addEventListener('click', async e => {
     button.disabled = true;
     if (act === 'close-profile') document.querySelector('#public-profile')?.remove();
     else if (act === 'cancel') { joining = null; renderPlayers(); }
+    else if (act === 'open-recover') { const d = document.getElementById('recover-box'); if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); d.querySelector('input[name=handle]')?.focus(); } }
     else if (act === 'copy-recovery' && acct) { await navigator.clipboard.writeText('OKKIE-profiel: ' + acct.handle + '\nHerstelcode: ' + acct.recovery); notify('Herstelgegevens gekopieerd. Bewaar ze privé.'); }
     else if (act === 'share-parent' && acct) await shareParent(acct);
     else if (act === 'copy-parent' && acct) { await navigator.clipboard.writeText(acct.consentLink); notify('Link gekopieerd. Stuur hem naar je ouder of verzorger.'); }
@@ -233,7 +246,15 @@ document.addEventListener('submit', async e => {
       const pid = form.dataset.join;
       const age = fd.get('age');
       if (!age) throw new Error('Kies je leeftijd.');
-      const r = await request('/v1/darters/join', 'POST', { nickname: String(fd.get('nickname') || ''), age });
+      const nickname = String(fd.get('nickname') || '').trim().replace(/\s+/g, ' ');
+      // Staat deze naam al in Darters? Dan is het vaak hetzelfde profiel van een andere telefoon of uit Safari.
+      // Eerst vragen; terugzetten voorkomt een tweede profiel. Niets wordt samengevoegd of verwijderd.
+      if (form.dataset.confirmed !== nickname.toLowerCase()) {
+        let taken = false;
+        try { taken = ((await request('/v1/leaderboard?period=all')).ranking || []).some(x => x.nickname.trim().toLowerCase() === nickname.toLowerCase()); } catch { /* offline: niet blokkeren */ }
+        if (taken) { form.dataset.confirmed = nickname.toLowerCase(); showDuplicateHint(form, nickname); return; }
+      }
+      const r = await request('/v1/darters/join', 'POST', { nickname, age });
       upsertAccount(pid, { ...r.account, token: r.token, recovery: r.recovery, enabled: true, lastSync: null,
         waitingParent: !!r.needsParent, consentLink: r.consentToken ? parentUrl(r.consentToken) : null });
       joining = null;

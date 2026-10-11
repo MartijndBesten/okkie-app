@@ -20,7 +20,7 @@ import * as SC from './share-card.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.6.1';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -1060,7 +1060,7 @@ VIEWS.more = () => {
       <h3>Instellingen</h3>
       ${toggle('sound', 'Geluidjes')}${toggle('vibrate', 'Trillen bij tikken')}
       ${SP.speechSupported() ? `${toggle('speech', 'Gesproken aanmoedigingen')}
-        <p class="muted small setting-note">Een stem bij een persoonlijk record, je eerste 100+ of 180 en een mooie finish. Niet bij elke beurt. Gebruikt de stem van je telefoon; hoor je niets, zet dan het geluid aan.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
+        <p class="muted small setting-note">Een stem bij een persoonlijk record, je eerste 100+ of 180 en een mooie finish; niet bij elke beurt. Gebruikt de stem van je telefoon. Hoor je niets op een iPhone? Zet de stil-schakelaar aan de zijkant uit en het volume omhoog.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
         : '<p class="muted small setting-note">Gesproken aanmoedigingen werken niet in deze browser.</p>'}
       <div class="setting"><span>Thema</span><div class="chips small"><button class="chip ${data.settings.theme === 'dark' ? 'on' : ''}" data-act="theme" data-arg="dark">Donker</button><button class="chip ${data.settings.theme === 'light' ? 'on' : ''}" data-act="theme" data-arg="light">Licht</button></div></div>
     </section>

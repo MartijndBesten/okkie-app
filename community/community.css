@@ -2,13 +2,18 @@
 
 /* Darters: overzicht als lijst (prettig op een telefoon) en één schakelaar per speler */
 .darters{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.darters li{display:grid;grid-template-columns:2rem 1fr auto;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04)}
-.d-rank{font-weight:800;opacity:.7;text-align:center}
-.d-main{min-width:0;display:grid;gap:2px}
-.d-name{all:unset;cursor:pointer;font-weight:700;overflow-wrap:anywhere}
+.darters li{display:grid;grid-template-columns:1.6rem minmax(0,1fr) auto;grid-template-areas:"rank name avg" ". stats stats";align-items:baseline;gap:6px 12px;padding:14px;border-radius:14px;background:rgba(255,255,255,.04)}
+.d-rank{grid-area:rank;font-weight:800;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+.d-name{all:unset;grid-area:name;cursor:pointer;font-weight:800;font-size:1.08rem;line-height:1.25;overflow-wrap:anywhere}
 .d-name:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:4px}
-.d-meta{font-size:.82rem;opacity:.75}
-.d-avg{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums}
+.d-avg{grid-area:avg;white-space:nowrap}
+.d-avg strong{font-size:1.5rem;font-weight:850;color:var(--lime);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.d-avg small{font-size:.78rem;color:var(--muted)}
+/* Overige cijfers over de volle breedte: leesbaar (niet piepklein), rustig in de toelichtingskleur, cijfers iets sterker */
+.d-stats{grid-area:stats;display:flex;flex-wrap:wrap;gap:2px 14px;font-size:.9rem;color:var(--muted);line-height:1.4}
+.d-stats b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+.dup{margin:14px 0 4px}
+.dup p{margin:0 0 8px}
 .d-player{padding:12px 0;border-top:1px solid rgba(255,255,255,.08)}
 .d-player:first-of-type{border-top:0}
 .d-head{display:grid;gap:6px}
