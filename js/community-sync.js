@@ -120,18 +120,31 @@ export async function request(path, method = 'GET', payload = null, token = null
 export async function syncAccount(data, playerId, storage = localStorage, { replace = false } = {}) {
   const acct = getAccount(playerId, storage);
   if (!acct?.token || !acct.enabled || !apiAvailable()) return { skipped: true };
+  const stamp = acct.pendingAt;
   const snapshots = publicSnapshots(data, playerId);
   const result = await request('/v1/me/snapshots', 'PUT', replace ? { snapshots, replace: true } : { snapshots }, acct.token);
-  acct.lastSync = new Date().toISOString();
-  upsertAccount(playerId, acct, storage);
+  // Opnieuw lezen: tijdens het versturen kan er een nieuwe wijziging zijn gemarkeerd; die blijft dan staan.
+  const now = getAccount(playerId, storage) || acct;
+  now.lastSync = new Date().toISOString();
+  if (now.pendingAt === stamp) { delete now.pendingAt; delete now.pendingReplace; }
+  upsertAccount(playerId, now, storage);
   return result;
 }
-// Een mislukte verbinding mag een lokale training nooit blokkeren.
-// Geen synchronisatie zolang er geen expliciet ingeschakeld account is.
-export function queueCommunitySync(data, playerIds, opts = {}) {
+export function queueCommunitySync(data, playerIds, opts = {}, storage = localStorage) {
   if (!apiAvailable()) return;
   const ids = [...new Set(playerIds || [])];
   for (const id of ids) {
-    if (getAccount(id)?.enabled) syncAccount(data, id, localStorage, opts).catch(() => {});
+    const acct = getAccount(id, storage);
+    if (!acct?.enabled) continue;
+    // Eerst markeren: sluit de app of valt het internet weg vóór het antwoord, dan gaat het later alsnog mee.
+    upsertAccount(id, { ...acct, pendingAt: Date.now(), ...(opts.replace || acct.pendingReplace ? { pendingReplace: true } : {}) }, storage);
+    syncAccount(data, id, storage, { replace: !!(opts.replace || acct.pendingReplace) }).catch(() => {});
   }
+}
+// Bij het opstarten en zodra er weer internet is: wat nog niet verstuurd was alsnog versturen.
+export function resumePendingSync(data, storage = localStorage) {
+  if (!apiAvailable() || !data?.players) return [];
+  const ids = Object.entries(readAccounts(storage)).filter(([id, a]) => a?.pendingAt && a.enabled && data.players.some(p => p.id === id)).map(([id]) => id);
+  for (const id of ids) syncAccount(data, id, storage, { replace: !!getAccount(id, storage).pendingReplace }).catch(() => {});
+  return ids;
 }
