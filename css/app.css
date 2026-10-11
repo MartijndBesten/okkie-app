@@ -361,6 +361,9 @@ body.playing { background: var(--bg); }
 .cel-inner.max { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, var(--bg)); }
 .cel-inner.max .cel-big { color: var(--gold); font-size: 3rem; }
 .cel-inner.max .cel-small { color: var(--gold); font-size: .95rem; }
+/* 180: getal boven de tekst, zodat "ONE HUNDRED AND EIGHTY!" ook op smalle telefoons (360–390px) binnen het kader past. */
+.cel-inner.max { flex-direction: column; align-items: center; gap: 4px; border-radius: 26px; text-align: center; padding: 12px 24px 14px; }
+.cel-inner.max .cel-small { white-space: normal; }
 .celebrate.show .cel-inner.max { animation: cel-in 2.2s cubic-bezier(.2, 1.4, .4, 1) both, shimmer 2.2s linear; }
 .cel-inner.bust { border-color: var(--red); }
 .cel-inner.bust .cel-big { color: var(--red); }

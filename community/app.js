@@ -149,7 +149,7 @@ async function renderParent() {
         '<p>Zichtbaar: de naam “' + esc(c.child) + '”, gemiddelde, aantal trainingen, hoogste beurt en beste 30/60/99. Nooit zichtbaar: losse pijlen, tijdstippen, achternaam, foto’s of berichten. OKKIE. heeft geen chat.</p>' +
         '<label class="check"><input type="checkbox" id="is-parent"><span>Ik ben de ouder of verzorger</span></label>' +
         '<div class="d-buttons"><button class="action" type="button" data-action="confirm">Ik geef toestemming</button></div>' +
-        '<p class="note">Je kunt later via deze link de toestemming intrekken; dan wissen we alles online. Link geldig tot ' + esc(c.expiresAt) + '.</p>') +
+        '<p class="note">Je kunt later via deze link de toestemming intrekken; dan wissen we alles online. Link geldig tot ' + esc(new Date(c.expiresAt + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })) + '.</p>') +
       '<p class="note"><a href="https://okkiedarts.nl/privacy/#darters" target="_blank" rel="noopener">Privacyverklaring</a></p></section>';
   } catch (e) { box.innerHTML = '<section class="card parent"><h2>Deze link werkt niet meer</h2><p>' + esc(e.message) + '</p></section>'; }
 }

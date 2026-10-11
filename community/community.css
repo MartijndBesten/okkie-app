@@ -23,3 +23,11 @@
 .parent{margin-bottom:16px}
 @media (prefers-reduced-motion: reduce){.switch input,.account .switch input::after{transition:none}}
 .account .check input[type=radio]{display:inline-block;width:18px;height:18px;padding:0;margin-top:3px;accent-color:var(--green)}
+/* Ouder/verzorger-scherm (buiten .account): zelfde knoppen en vinkje als de rest van Darters */
+.parent .check{display:flex;align-items:flex-start;gap:12px;line-height:1.45;font-weight:600;margin:18px 0 6px;cursor:pointer}
+.parent .check input{flex:0 0 22px;width:22px;height:22px;margin-top:1px;accent-color:var(--lime)}
+.parent button.action{width:100%;border:0;cursor:pointer;background:var(--lime);color:#12220d;font-weight:800;padding:15px;border-radius:12px;font-size:16px;margin-top:10px}
+.parent button.action.danger{background:#492e29;color:#ffcccc}
+.parent button:disabled{opacity:.5;cursor:not-allowed}
+.parent .note{font-size:13px;color:var(--muted);margin-top:12px}
+.parent a{color:var(--lime)}
