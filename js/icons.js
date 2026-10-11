@@ -26,6 +26,10 @@ const P = {
   back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   arrow: '<path d="M7 17 17 7M9 7h8v8"/>',
+  // Duimstok (maten), vraagteken in een ballon (hulp), luidspreker (gesproken aanmoedigingen).
+  ruler: '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10 8v4.5M13.5 8v3M17 8v4.5"/>',
+  help: '<path d="M4.5 18.5V6A1.5 1.5 0 0 1 6 4.5h12A1.5 1.5 0 0 1 19.5 6v9a1.5 1.5 0 0 1-1.5 1.5H8z"/><path d="M10 8.8a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14h.01"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
 };
 
 export function icon(name, { size = 22, label = '' } = {}) {

@@ -4,9 +4,11 @@
 // zijn eigen telefoon. Die code hoort bij precies één training. Na die training gaat alleen de samenvatting (dag,
 // pijlen, punten, hoogste beurt, 100+/140+/180) naar zijn inbox; lukt dat niet (offline), dan blijft hij in de wachtrij.
 // Op je eigen telefoon: de inbox wordt opgehaald, als training toegevoegd (eenmalig, op vast ID) en daarna bevestigd.
+// Sinds 1.6.0 werkt dezelfde code ook voor één 301/501-wedstrijd: dan gaat alleen de eindstand (legs, winnaar) en de
+// eigen wedstrijdcijfers van die speler mee, en komt hij bij je wedstrijden (nooit bij trainingen of Darters).
 //
 // Alles hier is aanvullend: zonder code of account verandert er niets aan gewoon trainen.
-import { trainingTotals } from './logic.js';
+import { trainingTotals, matchState } from './logic.js';
 import { summaryTraining } from './store.js';
 import { request, apiAvailable, getAccount, readAccounts, queueCommunitySync, OTHER_PHONE } from './community-sync.js';
 
@@ -25,6 +27,13 @@ export function guestLink(playerId, storage = localStorage) { return readGuest(s
 export function linkGuest(playerId, code, nickname, storage = localStorage) {
   const d = readGuest(storage);
   d.links[playerId] = { code: normalizeCode(code), nickname, usedFor: null, linkedAt: new Date().toISOString() };
+  saveGuest(d, storage);
+}
+// Speler verwijderd op deze telefoon: koppeling weg. Trainingen in de wachtrij horen bij de vriend zelf en blijven.
+export function unlinkGuest(playerId, storage = localStorage) {
+  const d = readGuest(storage);
+  if (!d.links[playerId]) return;
+  delete d.links[playerId];
   saveGuest(d, storage);
 }
 // Bij de start van een training: elke gekoppelde speler met een ongebruikte code hoort bij déze training.
@@ -64,6 +73,29 @@ export function queueGuestTrainings(groupTrainingId, savedTrainings, storage = l
   saveGuest(d, storage);
   return n;
 }
+// Wedstrijd: alleen wat nodig is voor de eigen wedstrijdstatistieken van speler `idx` (geen namen, geen beurten).
+export function guestMatchSummary(m, idx) {
+  const st = matchState(m), t = st.totals[idx];
+  return { id: m.id, date: String(m.finishedAt || m.startedAt).slice(0, 10), start: m.settings.start, bestOf: m.settings.bestOf,
+    doubleOut: !!m.settings.doubleOut, players: m.players.length, me: idx, won: st.won, winner: st.winner, stopped: !!m.stopped || st.winner === null,
+    darts: t.darts, points: t.points, high: t.high || 0, bestCheckout: t.bestCheckout || 0, t100: t.t100, t140: t.t140, t180: t.t180 };
+}
+// Na de wedstrijd (uitgespeeld of gestopt): elke gekoppelde speler die echt gooide krijgt zijn eigen uitslag in de wachtrij.
+// Een gestopte wedstrijd heeft geen winnaar; daar verzinnen we niets bij.
+export function queueGuestMatch(matchId, m, storage = localStorage) {
+  const d = readGuest(storage);
+  const names = [];
+  m.players.forEach((mp, idx) => {
+    const l = mp.id && d.links[mp.id];
+    if (!l || l.usedFor !== matchId || !l.code) return;
+    const s = guestMatchSummary(m, idx);
+    if (m.players.length > 1 && s.darts > 0) { d.queue.push({ code: l.code, nickname: l.nickname, playerId: mp.id, match: s }); names.push(l.nickname); l.code = null; }
+    l.usedFor = null;   // niet gegooid: code blijft bruikbaar
+  });
+  saveGuest(d, storage);
+  return names;
+}
+
 // Wachtrij versturen. Netwerkfout: blijft staan. Al ontvangen: weg (geen dubbele). Code ongeldig: blijft met melding.
 export async function flushGuestQueue(storage = localStorage) {
   const d = readGuest(storage);
@@ -71,7 +103,8 @@ export async function flushGuestQueue(storage = localStorage) {
   const sent = [], failed = [];
   for (const item of [...d.queue]) {
     try {
-      const r = await request('/v1/guest/training', 'POST', { code: prettyCode(item.code), training: item.training });
+      const r = item.match ? await request('/v1/guest/match', 'POST', { code: prettyCode(item.code), match: item.match })
+        : await request('/v1/guest/training', 'POST', { code: prettyCode(item.code), training: item.training });
       sent.push(r.nickname || item.nickname);
       d.queue = d.queue.filter(x => x !== item);
     } catch (e) {
@@ -97,10 +130,26 @@ export async function pullInbox(data, save, storage = localStorage) {
   let added = 0;
   for (const [playerId, acct] of Object.entries(readAccounts(storage))) {
     if (!acct?.token || !data.players.some(p => p.id === playerId)) continue;
-    let list;
-    try { list = (await request('/v1/me/inbox', 'GET', null, acct.token)).trainings; } catch { continue; }
-    if (!list?.length) continue;
+    let list, matches;
+    try { const r = await request('/v1/me/inbox', 'GET', null, acct.token); list = r.trainings || []; matches = r.matches || []; } catch { continue; }
+    if (!list.length && !matches.length) continue;
     const ids = [];
+    // Wedstrijden: bij de wedstrijden van deze speler, herkenbaar als "andere telefoon"; vaste ID = nooit dubbel.
+    const me = data.players.find(p => p.id === playerId);
+    for (const it of matches) {
+      const id = 'gast-' + it.id;
+      if (!data.matches.some(m => m.id === id)) {
+        const others = it.players - 1;
+        let k = 0;
+        const players = Array.from({ length: it.players }, (_, i) => i === it.me ? { id: playerId, name: me.name } : { id: null, name: others > 1 ? `Tegenstander ${++k}` : 'Tegenstander' });
+        const at = it.date + 'T12:00:00.000Z';
+        data.matches.push({ id, startedAt: at, finishedAt: at, source: OTHER_PHONE, settings: { start: it.start, bestOf: it.bestOf, doubleOut: !!it.doubleOut },
+          players, legs: [], ...(it.stopped ? { stopped: true } : {}),
+          summary: { me: it.me, won: it.won, winner: it.winner, darts: it.darts, points: it.points, high: it.high, bestCheckout: it.bestCheckout, t100: it.t100, t140: it.t140, t180: it.t180 } });
+        added++;
+      }
+      ids.push(it.id);
+    }
     for (const it of list) {
       const id = 'gast-' + it.id;
       if (!data.trainings.some(t => t.id === id)) {

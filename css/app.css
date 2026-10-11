@@ -83,7 +83,7 @@ body {
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; touch-action: manipulation; }
 a { color: inherit; }
-a:not(.btn):not(.action):not(.maker) { color: var(--accent); text-underline-offset: 3px; }
+a:not(.btn):not(.action):not(.maker):not(.link-row) { color: var(--accent); text-underline-offset: 3px; }
 h1, h2, h3, h4 { margin: 0; line-height: 1.15; }
 h3 { font-size: 1.06rem; font-weight: 750; margin-bottom: 6px; letter-spacing: -.005em; }
 h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 16px 0 8px; font-weight: 700; }
@@ -98,7 +98,7 @@ p { margin: 6px 0; }
 .top {
   position: sticky; top: 0; z-index: 5;
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
-  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  padding: calc(env(safe-area-inset-top) + 10px) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
@@ -132,7 +132,7 @@ p { margin: 6px 0; }
 .tabbar button::before { content: ''; position: absolute; top: -5px; left: 50%; width: 22px; height: 3px; margin-left: -11px; border-radius: 0 0 3px 3px; background: var(--accent); transform: scaleX(0); transition: transform .2s ease; }
 .tabbar button.active::before { transform: scaleX(1); }
 
-.page { padding: 4px 16px calc(96px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; display: grid; gap: 12px; animation: page-in .22s ease both; }
+.page { padding: 4px max(16px, env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); max-width: 720px; margin: 0 auto; display: grid; gap: 12px; animation: page-in .22s ease both; }
 @keyframes page-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---------- Kaarten, tegels ---------- */
@@ -496,7 +496,7 @@ body.playing { background: var(--bg); }
 
 /* ---------- Modal & toast ---------- */
 .modal { position: fixed; inset: 0; z-index: 40; background: #000a; display: grid; align-items: end; justify-items: center; padding: 0; animation: fade .15s ease; }
-.modal-card { width: min(560px, 100%); max-height: 88dvh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 22px 22px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); animation: up .2s ease; }
+.modal-card { width: min(560px, 100%); max-height: 88dvh; overflow: auto; overscroll-behavior: contain; background: var(--surface); border: 1px solid var(--line); border-radius: 22px 22px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); animation: up .2s ease; }
 @media (min-width: 640px) { .modal { align-items: center; } .modal-card { border-radius: 22px; } }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
@@ -608,6 +608,8 @@ button.slot:active { transform: scale(.96); }
 .welcome .move-card { display: grid; gap: 6px; }
 .welcome .move-card .btn { justify-self: start; }
 .transfer-code { width: 100%; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--bg2); color: var(--text); word-break: break-all; resize: vertical; margin-top: 8px; }
+/* iPhone zoomt in bij invoervelden onder 16px en zoomt daarna niet terug (kop half weg, vreemd scrollen). */
+.transfer-code:not([readonly]), textarea:not([readonly]), select { font-size: 16px; }
 .link.file { cursor: pointer; padding: 0; }
 .install-steps { padding-left: 22px; display: grid; gap: 10px; margin: 12px 0; }
 .install-steps li { padding-left: 4px; }
@@ -616,3 +618,77 @@ button.slot:active { transform: scale(.96); }
 [data-testid=transfer-table] td:last-child .ico { margin-left: auto; }
 .plain-list { margin: 4px 0 8px; padding-left: 18px; font-size: .88rem; }
 .plain-list li { margin: 3px 0; }
+
+/* ---------- Meer: lijst met uitleg, regels en hulp ---------- */
+.link-list { padding: 4px 6px; display: grid; }
+.link-row { display: flex; align-items: center; gap: 12px; padding: 12px 10px; border-radius: var(--r-md); color: var(--text); text-align: left; text-decoration: none; width: 100%; }
+.link-row + .link-row { border-top: 1px solid var(--line); border-radius: 0; }
+.link-row .a-icon { width: 38px; height: 38px; border-radius: 11px; }
+.link-row > span:nth-child(2) { flex: 1; min-width: 0; display: grid; }
+.link-row b { font-weight: 750; }
+.link-row small { color: var(--muted); }
+.link-row > .ico:last-child { color: var(--muted); }
+a.link-row, a.link-row:visited { color: var(--text); }
+
+/* ---------- Dartregels & afmetingen ---------- */
+.rules-figure { margin: 10px -10px 4px; }
+.rules-drawing { display: block; width: 100%; height: auto; max-width: 520px; margin: 0 auto; }
+.rules-drawing .rd-wall { stroke: var(--muted); stroke-width: 3; }
+.rules-drawing .rd-floor { stroke: var(--muted); stroke-width: 2; }
+.rules-drawing .rd-board { fill: var(--surface2); stroke: var(--text); stroke-width: 1.5; }
+.rules-drawing .rd-bull { fill: var(--red); }
+.rules-drawing .rd-oche { fill: var(--accent); }
+.rules-drawing .rd-diag { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 7 5; fill: none; }
+.rules-drawing .rd-dim { stroke: var(--text); stroke-width: 1.5; fill: none; }
+.rules-drawing .rd-guide { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; fill: none; }
+.rules-drawing .rd-arrow { fill: var(--text); }
+.rules-drawing text { fill: var(--text); font: 650 15px system-ui, -apple-system, sans-serif; }
+.rules-drawing .rd-val { font-size: 22px; font-weight: 850; }
+.rules-drawing .rd-val.acc { fill: var(--accent); }
+.rules-drawing .rd-sub { fill: var(--muted); font-size: 15px; }
+.rules-measures { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 2px; }
+.rules-measures li { display: grid; grid-template-columns: 78px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.rules-measures b { font-size: 1.12rem; font-weight: 850; color: var(--lime); }
+.rules-measures span { font-size: .93rem; }
+.rules-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 7px; font-size: .95rem; }
+.rules-source { padding: 0 4px; }
+
+/* ---------- Hulp & feedback ---------- */
+.fb-form { display: grid; gap: 6px; margin-top: 8px; }
+.fb-form label:not(.chip):not(.file) { margin: 10px 0 0; }
+.fb-form textarea { width: 100%; min-height: 120px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg2); border: 1px solid var(--line-strong); color: var(--text); font: inherit; font-size: 16px; resize: vertical; outline: none; }
+.fb-form textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg .chip { cursor: pointer; margin: 0; }
+.seg input[type=radio] { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; min-height: 0; padding: 0; margin: 0; border: 0; }
+.seg .chip:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.fb-shot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.fb-shot img { max-height: 150px; max-width: 60%; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.fb-info { margin-top: 10px; }
+.fb-info summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+.fb-meta { list-style: none; padding: 0; margin: 8px 0 0; font-size: .88rem; }
+.fb-meta li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.fb-meta span { color: var(--muted); }
+.fb-meta b { text-align: right; overflow-wrap: anywhere; }
+.fb-errors { white-space: pre-wrap; font-size: .76rem; color: var(--muted); background: var(--bg2); padding: 8px; border-radius: var(--r-sm); margin: 8px 0 0; }
+.fb-error { color: var(--red); font-weight: 700; margin: 8px 0 0; }
+.fb-mail { margin-top: 12px; }
+
+/* ---------- Persoonlijk doel en spraakinstelling ---------- */
+.goal-line { display: grid; gap: 1px; margin: 10px 0 0; padding: 9px 12px; border-radius: var(--r-sm); background: var(--surface2); font-size: .92rem; }
+.goal-line b { color: var(--lime); }
+.goal-line small { color: var(--muted); }
+.setting-note { margin: -2px 0 10px; }
+.setting-note .link { padding: 0 2px; font-size: inherit; }
+
+/* ---------- Delen van een training ---------- */
+.share-row { display: flex; justify-content: center; margin: 2px 0 0; }
+.share-preview { display: block; width: min(100%, 300px); margin: 6px auto 10px; border-radius: 16px; border: 1px solid var(--line); }
+
+/* ---------- Speler toevoegen (trainen en wedstrijd) ---------- */
+.add-btn { width: 100%; margin-top: 10px; }
+.add-known { margin: 4px 0 12px; }
+.modal .link-code { margin-top: 12px; }
+.link-row.compact { padding: 12px 0 2px; margin-top: 12px; border-top: 1px solid var(--line); border-radius: 0; }
+.link-row.compact > span:first-child { flex: 1; min-width: 0; display: grid; }

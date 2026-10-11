@@ -188,7 +188,17 @@ export function legsToWin(bestOf) {
   return Math.floor(bestOf / 2) + 1;
 }
 
+// Wedstrijd die op een andere telefoon is gespeeld (koppelcode): alleen de eindstand en de eigen cijfers van deze
+// speler zijn bekend (summary.me = zijn plek in players). Geen legs/beurten; tegenstanders zonder cijfers.
+function summaryState(match) {
+  const s = match.summary, n = match.players.length;
+  const totals = Array.from({ length: n }, () => ({ points: 0, darts: 0, high: 0, bestCheckout: 0, t100: 0, t140: 0, t180: 0 }));
+  totals[s.me] = { points: s.points, darts: s.darts, high: s.high || 0, bestCheckout: s.bestCheckout || 0, t100: s.t100 || 0, t140: s.t140 || 0, t180: s.t180 || 0 };
+  return { won: [...s.won], need: legsToWin(match.settings.bestOf), winner: Number.isInteger(s.winner) ? s.winner : null, totals: totals.map(t => ({ ...t, avg: avg3(t.points, t.darts) })) };
+}
+
 export function matchState(match) {
+  if (match.summary && !(match.legs || []).length) return summaryState(match);
   const n = match.players.length;
   const won = Array(n).fill(0);
   const totals = Array.from({ length: n }, () => ({ points: 0, darts: 0, high: 0, bestCheckout: 0, t100: 0, t140: 0, t180: 0 }));

@@ -21,7 +21,7 @@ export function emptyData() {
     trainings: [],
     matches: [],
     active: { training: null, match: null },
-    settings: { theme: 'dark', sound: true, vibrate: true },
+    settings: { theme: 'dark', sound: true, vibrate: true },   // speech ontbreekt = uit (gesproken aanmoedigingen)
   };
 }
 
@@ -145,8 +145,11 @@ export function parseBackup(text) {
   return { data };
 }
 
-export function makeBackup(data) {
-  return JSON.stringify({ app: 'okkie', exportedAt: new Date().toISOString(), data }, null, 2);
+// format: versie van dit bestandsformaat (los van data.version). Een latere Android-/iPhone-app leest hetzelfde bestand
+// (zie TOEKOMST-APPS.md); oudere OKKIE.-versies negeren de extra velden.
+export const BACKUP_FORMAT = 1;
+export function makeBackup(data, { appVersion } = {}) {
+  return JSON.stringify({ app: 'okkie', format: BACKUP_FORMAT, ...(appVersion ? { appVersion } : {}), exportedAt: new Date().toISOString(), data }, null, 2);
 }
 
 // Samenvoegen: alles uit `incoming` toevoegen wat nog niet bestaat (op id).

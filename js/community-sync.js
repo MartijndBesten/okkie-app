@@ -113,7 +113,7 @@ export async function request(path, method = 'GET', payload = null, token = null
     cache: 'no-store'
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || 'Kan OKKIE Cloud niet bereiken (' + response.status + ').');
+  if (!response.ok) { const err = new Error(body.error || 'Kan OKKIE Cloud niet bereiken (' + response.status + ').'); err.status = response.status; throw err; }
   return body;
 }
 // replace: true alleen als de speler zelf trainingen verwijderde; anders weigert de server minder pijlen dan online.
@@ -122,7 +122,14 @@ export async function syncAccount(data, playerId, storage = localStorage, { repl
   if (!acct?.token || !acct.enabled || !apiAvailable()) return { skipped: true };
   const stamp = acct.pendingAt;
   const snapshots = publicSnapshots(data, playerId);
-  const result = await request('/v1/me/snapshots', 'PUT', replace ? { snapshots, replace: true } : { snapshots }, acct.token);
+  let result;
+  try { result = await request('/v1/me/snapshots', 'PUT', replace ? { snapshots, replace: true } : { snapshots }, acct.token); }
+  catch (e) {
+    // Profiel bestaat online niet meer op dit toestel (delen uitgezet of profiel teruggezet op een andere telefoon):
+    // hier ook als "niet delen" tonen. Lokale trainingen blijven gewoon staan.
+    if (e.status === 401) { dropAccount(playerId, storage); return { dropped: true }; }
+    throw e;
+  }
   // Opnieuw lezen: tijdens het versturen kan er een nieuwe wijziging zijn gemarkeerd; die blijft dan staan.
   const now = getAccount(playerId, storage) || acct;
   now.lastSync = new Date().toISOString();

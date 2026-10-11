@@ -255,7 +255,26 @@ document.addEventListener('submit', async e => {
   finally { if (btn?.isConnected) btn.disabled = false; }
 });
 
+// Op een andere telefoon delen uitgezet, of het profiel daar teruggezet? Dan staat het hier ook uit
+// (de server kent dit toestel dan niet meer). De trainingen op deze telefoon blijven gewoon staan.
+async function verifyAccounts() {
+  if (!online()) return;
+  let changed = false;
+  for (const p of local?.players || []) {
+    const acct = getAccount(p.id);
+    if (!acct?.token || acct.waitingParent) continue;
+    try { await request('/v1/me', 'GET', null, acct.token); }
+    catch (e) {
+      if (e.status !== 401) continue;
+      dropAccount(p.id); changed = true;
+      message = 'Delen staat uit voor ' + p.name + ': dat is op een andere telefoon uitgezet of het profiel staat nu daar. De trainingen op deze telefoon blijven.';
+    }
+  }
+  if (changed) { renderPlayers(); refreshBoard(); }
+}
+
 if (parentToken) renderParent();
 renderPlayers();
 refreshBoard();
+verifyAccounts();
 if (online()) refreshWaiting();

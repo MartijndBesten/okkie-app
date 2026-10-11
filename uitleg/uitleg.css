@@ -9,3 +9,18 @@
 
 /* Denckh-signatuur (officieel logo met krul, niet nagetekend) */
 .maker{display:inline-flex;flex-direction:column;align-items:flex-start;gap:4px;line-height:1;color:inherit;text-decoration:none!important}.maker .maker-role{font-size:11px;letter-spacing:.3px;font-weight:600;color:var(--muted)}.maker img{display:block;height:28px;width:auto;max-width:none}.maker:focus-visible{outline:3px solid var(--lime);outline-offset:4px;border-radius:6px}.maker-inline{display:inline-block;vertical-align:middle;gap:0}.maker-inline img{height:22px}.maker-line{margin:16px 0 0!important;display:flex;justify-content:center}.maker-line .maker{align-items:center}
+/* Geïnstalleerde app op iPhone: kop niet onder de statusbalk. */
+.header{padding-top:max(19px,calc(env(safe-area-inset-top) + 8px))}footer{padding-bottom:env(safe-area-inset-bottom)}@media(max-width:780px){.header{padding-top:max(15px,calc(env(safe-area-inset-top) + 8px))}}
+/* Rustige app-preview in plaats van de getekende dartbord-illustratie (1.6.0): één echte beurt, geen animatie. */
+.app-peek{position:relative;width:min(100%,330px);padding:20px;border-radius:30px;background:#0b1a12;border:1px solid #2a4a37;box-shadow:0 30px 70px #0008}
+.ap-top{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;color:var(--muted)}.ap-top b{color:var(--text);font-weight:800}
+.ap-bar{height:4px;border-radius:9px;background:#1b3426;margin:12px 0 16px;overflow:hidden}.ap-bar i{display:block;width:10%;height:100%;background:var(--lime)}
+.ap-score{text-align:center;padding:14px 0 16px;border-radius:18px;background:linear-gradient(160deg,#1d3a24,#11261a)}
+.ap-score small{display:block;font-size:.75rem;color:var(--muted);font-weight:700}.ap-score strong{display:block;font-size:4.4rem;line-height:1.05;letter-spacing:-.05em;font-weight:900;color:var(--lime);font-variant-numeric:tabular-nums}
+.ap-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.ap-slots div{border-radius:12px;background:#153021;border:1px solid #25503a;padding:9px 4px;text-align:center;display:grid;gap:1px}
+.ap-slots small{font-size:.66rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}.ap-slots b{font-size:1.2rem}.ap-slots span{font-size:.72rem;color:var(--muted)}
+.ap-mods{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}.ap-mods span{border-radius:10px;border:1px solid #2f5a42;padding:8px;text-align:center;font-size:.72rem;font-weight:900;letter-spacing:.08em}
+.ap-keys{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.ap-keys span{border-radius:9px;background:#11251a;padding:9px 0;text-align:center;font-weight:800;font-size:.9rem}
+.hero-art::before{opacity:.6}
+@media(max-width:780px){.hero-art{min-height:0;padding:6px 0 10px}.app-peek{width:min(100%,320px)}}

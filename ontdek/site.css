@@ -80,3 +80,5 @@ html:not(.js) .js-only{display:none}
 .faq-list summary:focus-visible{outline:2px solid currentColor;outline-offset:4px;border-radius:6px}
 .faq-list details p{margin:10px 0 0;font-size:15px}
 .install .subtle{max-width:640px;margin:16px auto 22px}
+/* Geïnstalleerde app op iPhone (doorzichtige statusbalk): kop niet onder de klok/camera, voet niet onder de home-indicator. In een gewone browser is env() 0. */
+.topbar{padding-top:max(18px,calc(env(safe-area-inset-top) + 8px))}footer{padding-bottom:env(safe-area-inset-bottom)}@media(max-width:420px){.topbar{padding-top:max(15px,calc(env(safe-area-inset-top) + 8px))}}
