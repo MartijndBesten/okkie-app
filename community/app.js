@@ -284,7 +284,13 @@ async function verifyAccounts() {
   for (const p of local?.players || []) {
     const acct = getAccount(p.id);
     if (!acct?.token || acct.waitingParent) continue;
-    try { await request('/v1/me', 'GET', null, acct.token); }
+    try {
+      // Naam op de server aangepast (op een andere telefoon of door de beheerder)? Dan ook hier die naam tonen,
+      // zodat "Opslaan" bij de naam niet per ongeluk de oude naam terugzet.
+      const me = await request('/v1/me', 'GET', null, acct.token);
+      const name = me?.account?.nickname;
+      if (name && name !== acct.nickname) { upsertAccount(p.id, { ...acct, nickname: name }); changed = true; }
+    }
     catch (e) {
       if (e.status !== 401) continue;
       dropAccount(p.id); changed = true;

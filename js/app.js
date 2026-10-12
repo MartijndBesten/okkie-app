@@ -20,7 +20,7 @@ import * as SC from './share-card.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.6.2';
+export const APP_VERSION = '1.6.3';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -1065,7 +1065,7 @@ VIEWS.more = () => {
     </section>
     <section class="card about">
       ${logoSVG({ height: 34 })}
-      <p class="muted small">Versie ${APP_VERSION}. OKKIE komt van "oche" (spreek uit: okkie), de werplijn waar je achter staat bij darts. Geen account, geen tracking, geen reclame.</p>
+      <p class="muted small">Versie ${APP_VERSION}. OKKIE komt van "oche" (spreek uit: okkie), de werplijn waar je achter staat bij darts. Geen account, geen tracking, geen reclame en geen aankopen in de app.</p>
       <p class="maker-line"><a class="maker" href="https://denckh.nl/" target="_blank" rel="noopener" aria-label="Ontwikkeld door Denckh (naar denckh.nl)"><span class="maker-role">Ontwikkeld door</span><img class="on-dark" src="./icons/denckh-logo-signature-light.svg" alt="Denckh" width="92" height="28"><img class="on-light" src="./icons/denckh-logo-signature.svg" alt="Denckh" width="92" height="28"></a></p>
     </section>
   </main>`;
@@ -1096,7 +1096,8 @@ VIEWS['andere-app'] = () => `${header('Andere app', 'more')}
   </main>`;
 
 VIEWS.regels = () => `${header('Dartregels', 'more')}
-  <main class="page rules">${rulesPage()}</main>`;
+  <main class="page rules">${rulesPage()}
+  <p class="muted small rules-source">Deze uitleg staat ook op <a href="https://okkiedarts.nl/dartregels/" target="_blank" rel="noopener">okkiedarts.nl/dartregels</a>: handig om door te sturen.</p></main>`;
 
 function toggle(key, label) {
   return `<label class="setting"><span>${label}</span><input type="checkbox" class="switch" data-input="setting" data-arg="${key}" ${data.settings[key] ? 'checked' : ''}></label>`;
