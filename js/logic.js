@@ -311,6 +311,21 @@ export function hitDistribution(turnsList) {
   return { bySeg, mult, total };
 }
 
+// Meest geraakte vakken voor het gekozen filter van de trefferkaart.
+// mode 'all': per getal alles opgeteld (bull = 25 + 50); 'S' / 'D' / 'T': alleen dat soort treffer.
+// Labels zoals in de app: 20, D16, T20; de bull heet 25 (enkel) of Bull (50, telt als dubbel).
+export function topHits(dist, mode = 'all', limit = 6) {
+  const rows = [];
+  for (const [seg, c] of Object.entries(dist.bySeg)) {
+    const bull = seg === '25';
+    if (mode === 'all') rows.push([bull ? 'Bull' : seg, c.S + c.D + c.T]);
+    else if (mode === 'S') rows.push([seg, c.S]);
+    else if (mode === 'D') rows.push([bull ? 'Bull' : 'D' + seg, c.D]);
+    else if (mode === 'T' && !bull) rows.push(['T' + seg, c.T]);
+  }
+  return rows.filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || Number(a[0].replace(/\D/g, '') || 50) - Number(b[0].replace(/\D/g, '') || 50)).slice(0, limit);
+}
+
 // Groepeer afgeronde trainingen per dag/week/maand met gewogen gemiddelde.
 export function groupAverages(trainings, period) {
   const groups = new Map();

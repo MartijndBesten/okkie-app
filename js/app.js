@@ -20,7 +20,7 @@ import * as SC from './share-card.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.6.3';
+export const APP_VERSION = '1.6.4';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -807,7 +807,8 @@ VIEWS.stats = () => {
     sub: `${g.count} training${g.count === 1 ? '' : 'en'} · ${g.darts} pijlen`,
   }));
   const dist = L.hitDistribution([...turns, ...myTrainings('clock').flatMap(t => t.turns)]);
-  const counts = Object.entries(dist.bySeg).map(([seg, c]) => [seg, c.S + c.D + c.T]).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const counts = L.topHits(dist, ui.heatMode);
+  const heatName = { all: '', S: 'enkel', D: 'dubbel', T: 'triple' }[ui.heatMode];
   const chip = (key, val, label) => `<button class="chip ${ui[key] === val ? 'on' : ''}" data-act="stats-set" data-arg="${key}:${val}">${label}</button>`;
   const cmp = compareLast10(all.filter(t => f === 'all' || filterKey(t) === f));
   const earned = earnedBadges(data, data.activePlayerId);
@@ -843,7 +844,7 @@ VIEWS.stats = () => {
       ${dist.total ? `<div class="board-wrap">${boardSVG(dist, ui.heatMode)}</div>${heatLegend()}
       <p class="muted small">Toont welk vak je raakte (bijv. T20), niet de precieze plek van de pijl. Enkele treffers kleuren beide enkele ringen.</p>
       <div class="split">${splitBar(dist)}</div>
-      <h4>Meest geraakt</h4><div class="top-nums">${counts.map(([seg, n]) => `<span><b>${seg === '25' ? 'Bull' : seg}</b>${n}×</span>`).join('')}</div>` : '<p class="muted">Nog geen worpen.</p>'}
+      <h4>Meest geraakt${heatName ? ` <small class="muted">· ${heatName}</small>` : ''}</h4>${counts.length ? `<div class="top-nums" data-testid="top-hits">${counts.map(([label, n]) => `<span><b>${label}</b>${n}×</span>`).join('')}</div>` : `<p class="muted small" data-testid="top-hits">Nog geen ${heatName === 'triple' ? 'triples' : heatName === 'dubbel' ? 'dubbels' : 'treffers'} geraakt.</p>`}` : '<p class="muted">Nog geen worpen.</p>'}
     </section>
     <section class="card">
       <h3>Persoonlijke records</h3>
