@@ -29,6 +29,8 @@ const P = {
   // Duimstok (maten), vraagteken in een ballon (hulp), luidspreker (gesproken aanmoedigingen).
   ruler: '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10 8v4.5M13.5 8v3M17 8v4.5"/>',
   help: '<path d="M4.5 18.5V6A1.5 1.5 0 0 1 6 4.5h12A1.5 1.5 0 0 1 19.5 6v9a1.5 1.5 0 0 1-1.5 1.5H8z"/><path d="M10 8.8a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14h.01"/>',
+  // Schuifjes (Pas mijn statistieken aan).
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
 };
 

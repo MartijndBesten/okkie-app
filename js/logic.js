@@ -118,6 +118,21 @@ export function trainingTotals(training) {
   return { points: pts, darts, turns: (training.turns || []).length, avg: avg3(pts, darts), high, low, tons, t140, t180 };
 }
 
+// Alle beurten van één training op volgorde: score, de pijlen en of de beurt volledig is (3 pijlen).
+// Een training uit een andere app heeft alleen een eindstand: dan zijn er geen beurten (niets verzinnen).
+export function turnSeries(training) {
+  return (training?.turns || []).map((t, i) => ({ n: i + 1, score: turnScore(t.darts), darts: [...t.darts], complete: t.darts.length === 3 }));
+}
+
+// Hoogste of laagste beurt van een training, alleen over volledige beurten (net als trainingTotals).
+// Bij een gedeelde score staan alle beurtnummers erin. null als er geen volledige beurt is.
+export function extremeTurns(series, which = 'high') {
+  const full = series.filter(s => s.complete);
+  if (!full.length) return null;
+  const score = which === 'low' ? Math.min(...full.map(s => s.score)) : Math.max(...full.map(s => s.score));
+  return { score, turns: full.filter(s => s.score === score).map(s => s.n) };
+}
+
 export function trainingLimitDarts(training) {
   return training.limitTurns ? training.limitTurns * 3 : null;
 }

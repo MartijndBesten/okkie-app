@@ -18,9 +18,13 @@ export function pickVoice(list, lang) {
 }
 export const hasDutchVoice = () => { loadVoices(); return !voices.length || !!pickVoice(voices, 'nl-NL'); };
 
+// Enthousiast: iets sneller en hoger dan de gewone voorleesstem, zonder dat het overslaat.
+export const CHEER = { rate: 1.1, pitch: 1.2 };
+
 let lastSaid = '', lastAt = 0;
 // priority: 180-call onderbreekt wat er nog in de wachtrij staat; gewone zinnen sluiten aan (max. één extra).
-export function say(text, { lang = 'nl-NL', rate = 1, pitch = 1, priority = false } = {}) {
+// follow: de juich direct na de 180-call; die mag achter de call aansluiten, ook als die nog niet begonnen is.
+export function say(text, { lang = 'nl-NL', rate = CHEER.rate, pitch = CHEER.pitch, priority = false, follow = false } = {}) {
   const s = synth();
   if (!s || !text) return false;
   const t = Date.now();
@@ -28,7 +32,7 @@ export function say(text, { lang = 'nl-NL', rate = 1, pitch = 1, priority = fals
   try {
     // Alleen onderbreken als er echt iets klinkt: direct na cancel() slikt Safari soms de volgende zin in.
     if (priority && (s.speaking || s.pending)) s.cancel();
-    else if (s.pending) return false;
+    else if (s.pending && !follow) return false;
     if (s.paused) s.resume();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang; u.rate = rate; u.pitch = pitch; u.volume = 1;
@@ -41,35 +45,37 @@ export function say(text, { lang = 'nl-NL', rate = 1, pitch = 1, priority = fals
   } catch { return false; }
 }
 
-// De klassieke dartscall bij 180, in het Engels.
-export const call180 = () => say('One hundred and eighty!', { lang: 'en-GB', rate: 0.88, pitch: 0.95, priority: true });
+// De klassieke dartscall bij 180, in het Engels: met een korte opbouw ("One hundred... and eighty!") en hoog eindigend.
+export const call180 = () => say('One hundred... and eighty!', { lang: 'en-GB', rate: 0.92, pitch: 1.15, priority: true });
 
 const nl = n => String(Math.round(n * 10) / 10).replace('.', ',');
+// Afwisseling, zodat het niet als een bandje klinkt. rnd is alleen voor de tests.
+const pick = (list, rnd = Math.random) => list[Math.min(list.length - 1, Math.floor(rnd() * list.length))];
 
 // Welke zin hoort bij een beurt? Alleen bij betekenisvolle momenten; anders null (stil).
 // prevMax: hoogste beurt ooit van deze speler vóór deze beurt (trainingen en wedstrijden).
-export function turnLine(score, prevMax) {
-  if (score === 180) return { call180: true, text: prevMax < 180 ? 'Je eerste honderdtachtig. Geweldig!' : null };
-  if (score >= 140 && prevMax < 140) return { text: prevMax < 100 ? 'Je eerste honderdveertig plus! Mooi gegooid.' : 'Je eerste honderdveertig plus!' };
-  if (score >= 100 && prevMax < 100) return { text: 'Je eerste honderd plus! Mooi zo.' };
-  if (score >= 100 && score > prevMax) return { text: `Nieuwe hoogste beurt: ${score}!` };
+export function turnLine(score, prevMax, rnd) {
+  if (score === 180) return { call180: true, text: prevMax < 180 ? 'Ja! Je eerste honderdtachtig! Ongelooflijk!' : pick(['Maximaal!', 'Wat een pijlen!', 'Daar is ie weer!'], rnd) };
+  if (score >= 140 && prevMax < 140) return { text: pick(['Wauw! Je eerste honderdveertig plus! Lekker gegooid!', 'Boem! Je eerste honderdveertig plus! Heerlijk!'], rnd) };
+  if (score >= 100 && prevMax < 100) return { text: pick(['Yes! Je eerste honderd plus! Kom op, door!', 'Daar is ie! Je eerste honderd plus! Lekker!'], rnd) };
+  if (score >= 100 && score > prevMax) return { text: pick([`Boem! Nieuwe hoogste beurt: ${score}!`, `Wauw, ${score}! Je hoogste beurt ooit!`], rnd) };
   return null;
 }
 
 // Na een training: record gaat voor; anders een duidelijke verbetering ten opzichte van de laatste trainingen.
-export function trainingLine({ records = [], improved = false, goalReached = false }) {
+export function trainingLine({ records = [], improved = false, goalReached = false }, rnd) {
   if (records.length) {
     const r = records[0];
-    return { text: `Nieuw persoonlijk record! ${r.label}: ${r.spoken}.` };
+    return { text: `${pick(['Yes!', 'Wauw!', 'Boem!'], rnd)} Nieuw persoonlijk record! ${r.label}: ${r.spoken}!` };
   }
-  if (goalReached) return { text: 'Doel gehaald! Sterk gegooid.' };
-  if (improved) return { text: 'Sterke training! Duidelijk beter dan je laatste keren.', improvement: true };
+  if (goalReached) return { text: pick(['Doel gehaald! Wat een training!', 'Ja! Doel gehaald! Sterk gegooid!'], rnd) };
+  if (improved) return { text: pick(['Sterke training! Je wordt echt beter!', 'Lekker bezig! Duidelijk beter dan je laatste keren!'], rnd), improvement: true };
   return null;
 }
 
-export function checkoutLine(score, dart) {
-  if (dart === 'DB') return { text: score >= 100 ? `${score} uit, op de bull! Wat een finish.` : 'Uitgegooid op de bull! Prachtig.' };
-  if (score >= 100) return { text: `${score} uit! Wat een finish.` };
+export function checkoutLine(score, dart, rnd) {
+  if (dart === 'DB') return { text: score >= 100 ? `${score} uit, op de bull! Wat een finish!` : pick(['Op de bull uitgegooid! Prachtig!', 'Bull! Uitgegooid! Heerlijk!'], rnd) };
+  if (score >= 100) return { text: pick([`${score} uit! Wat een finish!`, `Boem! ${score} uit! Geweldig!`], rnd) };
   return null;
 }
 

@@ -8,9 +8,12 @@
 // eigen wedstrijdcijfers van die speler mee, en komt hij bij je wedstrijden (nooit bij trainingen of Darters).
 //
 // Alles hier is aanvullend: zonder code of account verandert er niets aan gewoon trainen.
-import { trainingTotals, matchState } from './logic.js';
+import { trainingTotals, matchState, periodKey } from './logic.js';
 import { summaryTraining } from './store.js';
 import { request, apiAvailable, getAccount, readAccounts, queueCommunitySync, OTHER_PHONE } from './community-sync.js';
+
+// Dag van gooien in de tijd van deze telefoon (niet UTC): een training om 0:30 hoort bij die dag, niet bij gisteren.
+const localDay = iso => periodKey(new Date(iso), 'dag');
 
 export const GUEST_KEY = 'okkie.guest.v1';
 export { OTHER_PHONE };
@@ -55,7 +58,7 @@ export function releaseGuests(trainingId, storage = localStorage) {
 }
 export function guestSummary(tr) {
   const t = trainingTotals(tr);
-  return { id: tr.id, date: String(tr.finishedAt || tr.startedAt).slice(0, 10), darts: t.darts, points: t.points,
+  return { id: tr.id, date: localDay(tr.finishedAt || tr.startedAt), darts: t.darts, points: t.points,
     high: t.high ?? null, tons: t.tons || 0, t140: t.t140 || 0, t180: t.t180 || 0 };
 }
 // Na de training: de gekoppelde spelers krijgen hun eigen training in de wachtrij (code is daarna verbruikt).
@@ -76,7 +79,7 @@ export function queueGuestTrainings(groupTrainingId, savedTrainings, storage = l
 // Wedstrijd: alleen wat nodig is voor de eigen wedstrijdstatistieken van speler `idx` (geen namen, geen beurten).
 export function guestMatchSummary(m, idx) {
   const st = matchState(m), t = st.totals[idx];
-  return { id: m.id, date: String(m.finishedAt || m.startedAt).slice(0, 10), start: m.settings.start, bestOf: m.settings.bestOf,
+  return { id: m.id, date: localDay(m.finishedAt || m.startedAt), start: m.settings.start, bestOf: m.settings.bestOf,
     doubleOut: !!m.settings.doubleOut, players: m.players.length, me: idx, won: st.won, winner: st.winner, stopped: !!m.stopped || st.winner === null,
     darts: t.darts, points: t.points, high: t.high || 0, bestCheckout: t.bestCheckout || 0, t100: t.t100, t140: t.t140, t180: t.t180 };
 }

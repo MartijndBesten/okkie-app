@@ -6,7 +6,7 @@ import * as G from './guest-sync.js';
 import * as Backup from './backup-alert.js';
 import { boardSVG, heatLegend } from './board.js';
 import { lineChart, bindChart } from './chart.js';
-import { BADGES, earnedBadges } from './achievements.js';
+import { BADGES, earnedBadges, activityDates } from './achievements.js';
 import { logoSVG, TAGLINE } from './brand.js';
 import { icon } from './icons.js';
 import * as T from './transfer.js';
@@ -17,10 +17,12 @@ import * as FB from './feedback.js';
 import * as SP from './speech.js';
 import * as M from './motivation.js';
 import * as SC from './share-card.js';
+import * as SV from './stat-prefs.js';
+import { turnChart, bindTurnCharts } from './turn-chart.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.6.4';
+export const APP_VERSION = '1.7.0';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -46,6 +48,8 @@ const ui = {
   statsPeriod: 'training',
   statsLast10: false,
   heatMode: 'all',
+  resultPick: null,   // groepsuitslag: van wie de grafiek per beurt
+  prefScope: 'one', prefPlayer: null,   // venster 'Pas mijn statistieken aan'
   lastTap: 0,
   result: null,
   setup: { kind: 'score', turns: 10, custom: 15 },
@@ -116,7 +120,8 @@ function overview(playerId = data.activePlayerId) {
     high,
     best,
     tons, t140, t180,
-    streak: L.dayStreak(all.filter(t => !t.dateUnknown).map(t => t.startedAt)),
+    // Gooien telt, ook een wedstrijd of op de telefoon van een vriend (zelfde dagen als de badges).
+    streak: L.dayStreak(activityDates(data, playerId)),
   };
 }
 
@@ -201,7 +206,7 @@ function voiceTurn(playerId, score, prevInSession) {
   const line = SP.turnLine(score, Math.max(savedHigh(playerId), prevInSession || 0));
   if (!line) return;
   if (line.call180) SP.call180();
-  if (line.text) SP.say(line.text);
+  if (line.text) SP.say(line.text, { follow: !!line.call180 });
 }
 const VOICE_KEY = 'okkie.voice.v1';
 function voiceTraining(r, t) {
@@ -226,6 +231,7 @@ function modal(html, { onClose } = {}) {
   const el = $('#modal');
   el.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true">${html}</div>`;
   el.hidden = false;
+  bindTurnCharts(el);
   el.onclick = e => { if (e.target === el) closeModal(); };
   modal.onClose = onClose;
   el.querySelector('input,button')?.focus({ preventScroll: true });
@@ -268,6 +274,7 @@ function render() {
   $('#tabbar').hidden = play || ui.view === 'welcome';
   document.querySelectorAll('#tabbar [data-go]').forEach(b => b.classList.toggle('active', b.dataset.go === tabOf(ui.view)));
   bindChart($('#app'));
+  bindTurnCharts($('#app'));
   const auto = $('#app [autofocus]');
   if (auto && !matchMedia('(pointer: coarse)').matches) auto.focus();
 }
@@ -376,8 +383,8 @@ VIEWS.home = () => {
   </main>`;
 };
 
-function tile(label, value, extra = '') {
-  return `<div class="tile ${extra}"><span>${esc(label)}</span><strong>${value}</strong></div>`;
+function tile(label, value, extra = '', sub = '') {
+  return `<div class="tile ${extra}"><span>${esc(label)}</span><strong>${value}</strong>${sub ? `<small>${sub}</small>` : ''}</div>`;
 }
 
 // ----- Samen trainen: 1-4 spelers gooien om de beurt 3 pijlen -----
@@ -604,44 +611,89 @@ VIEWS['result-training'] = () => {
   if (r.group) {
     const limitDarts = (r.limitTurns || 0) * 3;
     const rows = r.group.map(g => ({ ...g, t: data.trainings.find(x => x.id === g.id) })).filter(g => g.t)
-      .map(g => ({ ...g, tot: L.trainingTotals(g.t), p: player(g.playerId) }))
+      .map(g => { const series = L.turnSeries(g.t); return { ...g, tot: L.trainingTotals(g.t), p: player(g.playerId), series, hi: L.extremeTurns(series, 'high') }; })
       .sort((a, b) => b.tot.avg - a.tot.avg);
+    const gsv = SV.statView(data.settings, data.activePlayerId);
+    const pick = rows.find(g => g.playerId === ui.resultPick) || rows.find(g => g.playerId === data.activePlayerId) || rows[0];
     const medal = i => ['🥇', '🥈', '🥉', '4'][i];
     const extra = rows.filter(g => g.newBadges.length);
     return `${header('Uitslag', 'home')}<main class="page">
       <section class="result-hero win"><small>${esc(trainingTitle(rows[0].t))} · ${rows.length} spelers</small><strong data-testid="group-winner">${esc(rows[0].p?.name)}</strong><span>hoogste gemiddelde: ${fmt(rows[0].tot.avg, 2)}</span></section>
       <section class="card"><ol class="ranking">${rows.map((g, i) => `<li><span class="rk">${medal(i)}</span><span class="rk-name"><b>${esc(g.p?.name)}${limitDarts && g.tot.darts < limitDarts ? ' <small class="muted">(onvolledig)</small>' : ''}</b>
-        <small>${int(g.tot.points)} punten · hoogste beurt ${g.tot.high ?? '–'}</small>
+        <small>${int(g.tot.points)} punten · hoogste beurt ${g.tot.high ?? '–'}${g.hi ? ` (${turnsText(g.hi.turns, false)})` : ''}</small>
         ${compareLine(g.tot.avg, g.prevAvg)}
         ${g.records.length ? `<small class="rk-rec">🏅 ${g.records.map(esc).join(' · ')}</small>` : ''}</span>
         <strong>${fmt(g.tot.avg, 2)}<small>gem.</small></strong></li>`).join('')}</ol></section>
+      ${SV.shows(gsv, 'one', 'turns') && pick.series.length ? `<section class="card"><div class="card-head"><h3>Score per beurt</h3></div>
+        <div class="chips small" data-testid="result-pick">${rows.map(g => `<button class="chip ${g === pick ? 'on' : ''}" data-act="result-pick" data-arg="${esc(g.playerId)}">${esc(g.p?.name)}</button>`).join('')}</div>
+        ${turnChart(pick.series, { best: pick.hi?.turns || [], avg: pick.tot.avg })}</section>` : ''}
       <details class="card more"><summary>Badges en meer statistieken</summary>
         ${extra.length ? extra.map(g => `<h4>${esc(g.p?.name)}</h4>${badgeBanner(g.newBadges)}`).join('') : '<p class="muted small">Geen nieuwe badges deze keer.</p>'}
         <h4>Per speler</h4><table class="mtable"><thead><tr><th></th><th>Pijlen</th><th>100+</th><th>140+</th><th>180</th><th>Laagste</th></tr></thead><tbody>
         ${rows.map(g => `<tr><th>${esc(g.p?.name)}</th><td>${g.tot.darts}</td><td>${g.tot.tons}</td><td>${g.tot.t140}</td><td>${g.tot.t180}</td><td>${g.tot.low ?? '–'}</td></tr>`).join('')}</tbody></table>
       </details>
+      ${prefsButton('one')}
       <div class="row-actions"><button class="btn primary big" data-act="again">Nog een potje</button><button class="btn ghost big" data-go="home">Home</button></div>
     </main>`;
   }
   const tot = L.trainingTotals(t);
   const limitDarts = (t.limitTurns || 0) * 3;
+  const partial = limitDarts && tot.darts < limitDarts;
+  // Wat deze speler na een training wil zien (Pas mijn statistieken aan). Standaard alleen het belangrijkste.
+  const sv = SV.statView(data.settings, t.playerId);
+  const on = k => SV.shows(sv, 'one', k);
+  const series = L.turnSeries(t);
+  const hi = L.extremeTurns(series, 'high'), lo = L.extremeTurns(series, 'low');
+  const hero = on('avg') ? { v: fmt(tot.avg, 2), u: 'gemiddelde per 3 pijlen', id: 'result-avg' } : on('points') ? { v: int(tot.points), u: 'punten', id: 'result-points' } : { v: int(tot.darts), u: 'pijlen gegooid', id: 'result-darts' };
+  const tiles = [
+    on('points') && hero.id !== 'result-points' ? tile('Totaal punten', int(tot.points)) : '',
+    on('darts') ? tile('Pijlen', int(tot.darts)) : '',
+    on('low') ? tile('Laagste beurt', lo ? lo.score : '–', '', lo ? turnsText(lo.turns) : '') : '',
+  ].filter(Boolean);
   return `${header('Uitslag', 'home')}<main class="page">
-    <section class="result-hero"><small>${esc(trainingTitle(t))}${limitDarts && tot.darts < limitDarts ? ' · onvolledig' : ''}</small><strong data-testid="result-avg">${fmt(tot.avg, 2)}</strong><span>gemiddelde per 3 pijlen</span>
-      ${compareLine(tot.avg, r.prevAvg)}
-      ${r.goal && !(limitDarts && tot.darts < limitDarts) ? `<em class="cmp ${tot.avg >= r.goal.target ? 'up' : ''}" data-testid="goal-result">${tot.avg >= r.goal.target ? `Doel ${fmt(r.goal.target, 1)} gehaald!` : `Doel ${fmt(r.goal.target, 1)}: nog ${fmt(r.goal.target - tot.avg, 1)} te gaan.`}</em>` : ''}</section>
-    ${r.records.length ? `<section class="records-banner">🏅 <b>Nieuw record!</b> ${r.records.map(esc).join(' · ')}</section>` : ''}
-    <section class="tiles">
-      ${tile('Totaal', int(tot.points))}${tile('Hoogste beurt', tot.high ?? '–')}${tile('Pijlen', tot.darts)}${tile('100+', tot.tons)}
-    </section>
-    <details class="card more"><summary>${r.newBadges.length ? `${r.newBadges.length} nieuwe badge${r.newBadges.length === 1 ? '' : 's'} en meer statistieken` : 'Meer statistieken'}</summary>
-      ${r.newBadges.length ? badgeBanner(r.newBadges) : ''}
-      <section class="tiles mini">${tile('Laagste', tot.low ?? '–')}${tile('140+', tot.t140)}${tile('180', tot.t180)}${tile('Beurten', tot.turns)}</section>
-      <h4>Per beurt</h4>${turnBars(t.turns)}
-    </details>
+    <section class="result-hero"><small>${esc(trainingTitle(t))}${partial ? ' · onvolledig' : ''}</small><strong data-testid="${hero.id}">${hero.v}</strong><span>${hero.u}</span>
+      ${on('prev') ? compareLine(tot.avg, r.prevAvg) : ''}
+      ${on('avg') && r.goal && !partial ? `<em class="cmp ${tot.avg >= r.goal.target ? 'up' : ''}" data-testid="goal-result">${tot.avg >= r.goal.target ? `Doel ${fmt(r.goal.target, 1)} gehaald!` : `Doel ${fmt(r.goal.target, 1)}: nog ${fmt(r.goal.target - tot.avg, 1)} te gaan.`}</em>` : ''}</section>
+    ${on('records') && r.records.length ? `<section class="records-banner">🏅 <b>Nieuw record!</b> ${r.records.map(esc).join(' · ')}</section>` : ''}
+    ${r.newBadges.length ? `<details class="card more"><summary>🏅 ${r.newBadges.length === 1 ? 'Nieuwe badge: ' + esc(BADGES.find(b => b.id === r.newBadges[0])?.name || '') : r.newBadges.length + ' nieuwe badges'}</summary>${badgeBanner(r.newBadges)}</details>` : ''}
+    ${on('high') ? bestTurnCard(series, hi) : ''}
+    ${on('turns') && series.length ? `<section class="card"><div class="card-head"><h3>Score per beurt</h3></div>${turnChart(series, { best: hi?.turns || [], avg: tot.avg })}${allTurns(series, hi)}</section>` : ''}
+    ${tiles.length ? `<section class="tiles" data-testid="result-tiles">${tiles.join('')}</section>` : ''}
+    ${on('tons') ? `<section class="tiles three" data-testid="result-tons">${tile('100+', tot.tons)}${tile('140+', tot.t140)}${tile('180', tot.t180)}</section>` : ''}
+    ${prefsButton('one', t.playerId)}
     <div class="row-actions"><button class="btn primary big" data-act="again">Nog een keer</button><button class="btn ghost big" data-go="stats">Statistieken</button></div>
     ${shareButton(r)}
   </main>`;
 };
+
+// "Beurt 4" of "beurt 4 en 7" / "beurt 2, 4 en 7".
+function turnsText(ns, cap = true) {
+  const list = ns.length > 1 ? ns.slice(0, -1).join(', ') + ' en ' + ns[ns.length - 1] : String(ns[0]);
+  return (cap ? 'Beurt ' : 'beurt ') + list;
+}
+
+// Hoogste beurt van één training: score, beurtnummer(s) en de drie pijlen. Bij een gedeelde score alle beurten.
+function bestTurnCard(series, hi) {
+  if (!series.length) return '';
+  if (!hi) return `<section class="card best-turn" data-testid="best-turn"><span class="overline">Hoogste beurt</span><p class="muted">Nog geen volledige beurt van 3 pijlen.</p></section>`;
+  const rows = series.filter(x => hi.turns.includes(x.n));
+  return `<section class="card best-turn" data-testid="best-turn">
+    <span class="overline">Hoogste beurt</span>
+    <div class="bt-main"><strong>${hi.score}</strong><span>${turnsText(hi.turns)} <small>van ${series.length}</small>${rows.length > 1 ? ' <small>· gedeelde hoogste</small>' : ''}</span></div>
+    <ul class="bt-list">${rows.map(x => `<li><span>Beurt ${x.n}</span><span class="darts">${x.darts.map(c => `<i>${esc(L.label(c))}</i>`).join('')}</span></li>`).join('')}</ul>
+  </section>`;
+}
+
+// Alle beurten op volgorde, als lijst (handig bij veel beurten en voor schermlezers).
+function allTurns(series, hi) {
+  const best = new Set(hi?.turns || []);
+  return `<details class="all-turns"><summary>Alle ${series.length} beurten op een rij</summary>
+    <ol class="turnlist">${series.map(x => `<li class="${best.has(x.n) ? 'best' : ''}${x.complete ? '' : ' part'}"><span>${x.n}</span><span class="darts">${x.darts.map(c => `<i>${esc(L.label(c))}</i>`).join('')}${x.complete ? '' : ' <small>onvolledig</small>'}</span><b>${x.score}</b></li>`).join('')}</ol></details>`;
+}
+
+function prefsButton(scope, pid = data.activePlayerId) {
+  return `<p class="prefs-row"><button class="btn ghost small" data-act="stat-prefs" data-arg="${scope}|${esc(pid)}" data-testid="stat-prefs">${icon('sliders', { size: 17 })}Pas mijn statistieken aan</button></p>`;
+}
 
 // Delen van één eigen training. Na een record of gehaald doel iets duidelijker, maar hooguit eens per 2 weken (SHARE_KEY).
 function shareButton(r) {
@@ -673,17 +725,12 @@ function shareData() {
     challenge: `Ik gooide ${fmt(tot.avg, 2)} gemiddeld op ${tot.darts} pijlen in OKKIE. Kun jij dat verslaan? 🎯 ${INVITE_URL}` };
 }
 
+const badgeTile = b => `<div class="badge" title="${esc(b.desc)}"><span class="badge-icon">${b.icon}</span><b>${esc(b.name)}</b><small>${esc(b.desc)}</small></div>`;
+
 function badgeBanner(ids) {
   return `<div class="badge-banner">${ids.map(id => { const b = BADGES.find(x => x.id === id); return `<div><span class="badge-icon">${b.icon}</span><div><small>Badge verdiend!</small><b>${esc(b.name)}</b></div></div>`; }).join('')}</div>`;
 }
 
-function turnBars(turns) {
-  const max = Math.max(60, ...turns.map(t => L.turnScore(t.darts)));
-  return `<div class="bars">${turns.map((t, i) => {
-    const s = L.turnScore(t.darts);
-    return `<div class="bar ${s >= 100 ? 'ton' : ''}" title="Beurt ${i + 1}: ${t.darts.map(L.label).join(' ')}"><i style="height:${(s / max) * 100}%"></i><span>${s}</span></div>`;
-  }).join('')}</div>`;
-}
 
 // ----- Wedstrijd instellen -----
 VIEWS.match = () => {
@@ -787,10 +834,11 @@ VIEWS.stats = () => {
   let ts = f === 'all' ? all : all.filter(t => filterKey(t) === f);
   if (ui.statsLast10) ts = ts.slice(-10);
   const turns = ts.flatMap(t => t.turns);
-  let pts = 0, darts = 0, high = 0, tons = 0, t140 = 0, t180 = 0, best = null, worst = null;
+  let pts = 0, darts = 0, high = 0, low = null, tons = 0, t140 = 0, t180 = 0, best = null, worst = null;
   for (const t of ts) {
     const tot = L.trainingTotals(t);
     pts += tot.points; darts += tot.darts; high = Math.max(high, tot.high ?? 0);
+    if (tot.low !== null) low = low === null ? tot.low : Math.min(low, tot.low);
     tons += tot.tons; t140 += tot.t140; t180 += tot.t180;
     if (tot.darts >= 9) {
       if (!best || tot.avg > best) best = tot.avg;
@@ -814,50 +862,73 @@ VIEWS.stats = () => {
   const earned = earnedBadges(data, data.activePlayerId);
   const matches = myMatches();
   const mStats = matchSummary(matches);
+  // Wat deze speler hier wil zien (Pas mijn statistieken aan).
+  const sv = SV.statView(data.settings, data.activePlayerId);
+  const on = k => SV.shows(sv, 'many', k);
+  const last = [...ts].reverse().find(t => (t.turns || []).length);   // laatste training mét losse pijlen
+  const lastSeries = last ? L.turnSeries(last) : [];
+  const lastHi = L.extremeTurns(lastSeries, 'high');
+  // Vorige training: dezelfde soort als de laatste (30 met 30, vrij met vrij), net als op het uitslagscherm.
+  const withDarts = ts.filter(t => L.trainingTotals(t).darts);
+  const lastT = withDarts[withDarts.length - 1];
+  const prevT = lastT && [...withDarts].reverse().find(t => t !== lastT && filterKey(t) === filterKey(lastT));
+  const prevPair = prevT ? [L.trainingTotals(prevT).avg, L.trainingTotals(lastT).avg] : [];
+  const kindName = t => (t.limitTurns ? t.limitTurns * 3 + ' pijlen' : 'vrij');
+  const statTiles = [
+    on('avg') ? tile('Gemiddelde', fmt(L.avg3(pts, darts), 2), 'hl', `${ts.length} training${ts.length === 1 ? '' : 'en'}`) : '',
+    ...(on('bestWorst') ? [tile('Beste training', best !== null ? fmt(best, 2) : '–'), tile('Slechtste training', worst !== null ? fmt(worst, 2) : '–')] : []),
+    on('high') ? tile('Hoogste beurt', high || '–') : '',
+    on('low') ? tile('Laagste beurt', low ?? '–') : '',
+    on('points') ? tile('Totaal punten', int(pts)) : '',
+    on('darts') ? tile('Pijlen', int(darts)) : '',
+  ].filter(Boolean);
+  const nothing = !statTiles.length && !on('tons') && !['prev', 'trend', 'turns', 'heatmap', 'records', 'badges', 'matches'].some(on);
   return `${header('Statistieken', 'home')}
   <main class="page">
+    ${prefsButton('many')}
     <div class="chips scroll">${chip('statsFilter', 'all', 'Alle')}${chip('statsFilter', '30', '30 pijlen')}${chip('statsFilter', '60', '60 pijlen')}${chip('statsFilter', '99', '99 pijlen')}${chip('statsFilter', 'vrij', 'Vrij')}
       <button class="chip ${ui.statsLast10 ? 'on' : ''}" data-act="stats-last10">Laatste 10</button></div>
     ${!ts.length ? `<section class="card empty"><p>Nog geen scoretrainingen${f !== 'all' ? ' van dit type' : ''}. Start een training en je statistieken verschijnen hier vanzelf.</p><button class="btn primary" data-go="train">Naar trainen</button></section>` : `
-    <section class="tiles">
-      ${tile('Gemiddelde', fmt(L.avg3(pts, darts), 2), 'hl')}
-      ${tile('Trainingen', ts.length)}
-      ${tile('Beste training', best !== null ? fmt(best, 2) : '–')}
-      ${tile('Slechtste', worst !== null ? fmt(worst, 2) : '–')}
-      ${tile('Hoogste beurt', high || '–')}
-      ${tile('Pijlen', int(darts))}
-      ${tile('100+', tons)}${tile('140+', t140)}${tile('180', t180)}
-    </section>
-    <p class="muted small explain">Het gemiddelde is altijd <b>punten per 3 pijlen</b> over álle gegooide pijlen (${int(pts)} punten / ${int(darts)} pijlen × 3). Het gewone gemiddelde van je trainingsgemiddelden is ${fmt(sessAvg, 2)}.</p>
-    ${cmp ? `<section class="card compare"><h3>Word ik beter?</h3><p>Laatste ${cmp.n} trainingen: <b>${fmt(cmp.recent, 2)}</b>${cmp.before !== null ? ` · de ${cmp.nb} daarvoor: <b>${fmt(cmp.before, 2)}</b>` : ''}</p>
+    ${statTiles.length ? `<section class="tiles" data-testid="stat-tiles">${statTiles.join('')}</section>` : ''}
+    ${on('tons') ? `<section class="tiles three" data-testid="stat-tons">${tile('100+', tons)}${tile('140+', t140)}${tile('180', t180)}</section>` : ''}
+    ${on('avg') ? `<p class="muted small explain">Het gemiddelde is altijd <b>punten per 3 pijlen</b> over álle gegooide pijlen (${int(pts)} punten / ${int(darts)} pijlen × 3). Het gewone gemiddelde van je trainingsgemiddelden is ${fmt(sessAvg, 2)}.</p>` : ''}
+    ${on('prev') && cmp ? `<section class="card compare" data-testid="stat-compare"><h3>Word ik beter?</h3>
+      ${prevPair.length === 2 ? `<p>Laatste training (${kindName(lastT)}): <b>${fmt(prevPair[1], 2)}</b> · de vorige ${kindName(lastT) === 'vrij' ? 'vrije training' : 'van ' + kindName(lastT)}: <b>${fmt(prevPair[0], 2)}</b> <span class="delta inline ${prevPair[1] >= prevPair[0] ? 'up' : 'down'}">${prevPair[1] >= prevPair[0] ? '▲ +' : '▼ −'}${fmt(Math.abs(prevPair[1] - prevPair[0]), 2)}</span></p>` : ''}
+      <p>Laatste ${cmp.n} trainingen: <b>${fmt(cmp.recent, 2)}</b>${cmp.before !== null ? ` · de ${cmp.nb} daarvoor: <b>${fmt(cmp.before, 2)}</b>` : ''}</p>
       ${cmp.before !== null ? `<p class="delta ${cmp.recent >= cmp.before ? 'up' : 'down'}">${cmp.recent >= cmp.before ? '▲ Je gaat vooruit' : '▼ Iets lager dan eerst'}: ${cmp.recent >= cmp.before ? '+' : '−'}${fmt(Math.abs(cmp.recent - cmp.before), 2)}</p>` : ''}</section>` : ''}
-    <section class="card">
+    ${on('turns') && last ? `<section class="card" data-testid="stat-turns">
+      <div class="card-head"><h3>Score per beurt</h3></div>
+      <p class="muted small">Laatste training: ${esc(trainingTitle(last))}${last.dateUnknown ? '' : ' · ' + esc(dateLabel(last.startedAt))}${lastHi ? ` · hoogste beurt <b>${lastHi.score}</b> (${turnsText(lastHi.turns, false)})` : ''}</p>
+      ${turnChart(lastSeries, { best: lastHi?.turns || [], avg: L.trainingTotals(last).avg })}</section>` : ''}
+    ${on('trend') ? `<section class="card">
       <div class="card-head"><h3>Ontwikkeling</h3></div>
       <div class="chips small">${chip('statsPeriod', 'training', 'Per training')}${chip('statsPeriod', 'dag', 'Dag')}${chip('statsPeriod', 'week', 'Week')}${chip('statsPeriod', 'maand', 'Maand')}</div>
       ${lineChart(chartPts)}
       <div class="chart-legend"><span><i></i>Gemiddelde</span><span><i class="t"></i>Trend</span></div>
       <p class="muted small">Tik op een punt voor details.${unknown ? ` ${unknown} training${unknown === 1 ? '' : 'en'} zonder datum (DC = DartCounter) staan alleen in "Per training".` : ''}</p>
-    </section>`}
-    <section class="card">
+    </section>` : ''}`}
+    ${nothing ? `<section class="card empty"><p>Je hebt alle onderdelen uitgezet.</p><button class="btn secondary" data-act="stat-prefs" data-arg="many|${esc(data.activePlayerId)}">Pas mijn statistieken aan</button></section>` : ''}
+    ${on('heatmap') ? `<section class="card">
       <div class="card-head"><h3>Trefferkaart</h3></div>
       <div class="chips small">${chip('heatMode', 'all', 'Alles')}${chip('heatMode', 'S', 'Enkel')}${chip('heatMode', 'D', 'Dubbel')}${chip('heatMode', 'T', 'Triple')}</div>
       ${dist.total ? `<div class="board-wrap">${boardSVG(dist, ui.heatMode)}</div>${heatLegend()}
       <p class="muted small">Toont welk vak je raakte (bijv. T20), niet de precieze plek van de pijl. Enkele treffers kleuren beide enkele ringen.</p>
       <div class="split">${splitBar(dist)}</div>
       <h4>Meest geraakt${heatName ? ` <small class="muted">· ${heatName}</small>` : ''}</h4>${counts.length ? `<div class="top-nums" data-testid="top-hits">${counts.map(([label, n]) => `<span><b>${label}</b>${n}×</span>`).join('')}</div>` : `<p class="muted small" data-testid="top-hits">Nog geen ${heatName === 'triple' ? 'triples' : heatName === 'dubbel' ? 'dubbels' : 'treffers'} geraakt.</p>`}` : '<p class="muted">Nog geen worpen.</p>'}
-    </section>
-    <section class="card">
+    </section>` : ''}
+    ${on('records') ? `<section class="card">
       <h3>Persoonlijke records</h3>
       ${recordList()}
-    </section>
-    <section class="card">
+    </section>` : ''}
+    ${on('badges') ? `<section class="card">
       <div class="card-head"><h3>Badges</h3><span class="badge-count">${earned.size}/${BADGES.length}</span></div>
-      <div class="badges">${BADGES.map(b => `<div class="badge ${earned.has(b.id) ? '' : 'locked'}" title="${esc(b.desc)}"><span class="badge-icon">${b.icon}</span><b>${esc(b.name)}</b><small>${esc(b.desc)}</small></div>`).join('')}</div>
-    </section>
-    <section class="card">
+      ${earned.size ? `<div class="badges" data-testid="badges-earned">${BADGES.filter(b => earned.has(b.id)).map(badgeTile).join('')}</div>` : '<p class="muted small">Nog geen badges. Rond je eerste training af.</p>'}
+      ${earned.size < BADGES.length ? `<details class="more badges-todo"><summary>Nog te verdienen (${BADGES.length - earned.size})</summary><div class="badges" data-testid="badges-locked">${BADGES.filter(b => !earned.has(b.id)).map(badgeTile).join('')}</div></details>` : ''}
+    </section>` : ''}
+    ${on('matches') ? `<section class="card">
       <h3>Wedstrijden</h3>
       ${matches.length ? `<section class="tiles">${tile('Gespeeld', mStats.played)}${tile('Gewonnen', mStats.won)}${tile('Gemiddelde', fmt(mStats.avg, 2))}${tile('Beste finish', mStats.bestCo || '–')}</section>` : '<p class="muted">Nog geen wedstrijden gespeeld.</p>'}
-    </section>
+    </section>` : ''}
   </main>`;
 };
 
@@ -980,15 +1051,32 @@ VIEWS.history = () => {
 function trainingDetail(t) {
   const isClock = t.kind === 'clock';
   const tot = L.trainingTotals(t);
+  const series = isClock ? [] : L.turnSeries(t), hi = L.extremeTurns(series, 'high');
   const others = t.groupPlayers ? names(t.groupPlayers.filter(id => id !== t.playerId)) : [];
   modal(`<h3>${esc(trainingTitle(t))}</h3><p class="muted">${t.dateUnknown ? 'Datum onbekend' : dateTime(t.startedAt)}${t.source ? ' · uit ' + esc(t.source) : ''}${t.note ? ' · ' + esc(t.note) : ''}</p>
     ${others.length ? `<p>Samen met ${others.map(esc).join(', ')}</p>` : ''}
     ${t.source ? `<p class="muted small">Uit een andere app: alleen de eindstand is bekend. Deze training telt mee in je gemiddelde en records, maar niet in de trefferkaart.</p>
       <form data-form="set-date" data-arg="${esc(t.id)}" class="guest"><input type="date" name="date" value="${t.dateUnknown ? '' : t.startedAt.slice(0, 10)}" max="${new Date().toISOString().slice(0, 10)}" aria-label="Datum"><button class="btn secondary">Datum opslaan</button></form>` : ''}
     ${isClock ? `<p>${L.clockState(t).done ? 'Klaar in <b>' + L.clockState(t).darts + '</b> pijlen' : 'Gestopt bij ' + L.clockState(t).hits + '/21'}</p>`
-      : `<div class="tiles mini">${tile('Gemiddelde', fmt(tot.avg, 2))}${tile('Totaal', tot.points)}${tile('Pijlen', tot.darts)}${tile('Hoogste', tot.high ?? '–')}</div>`}
-    <ol class="turnlist">${t.turns.map((turn, i) => `<li><span>${i + 1}</span><span class="darts">${turn.darts.map(c => `<i>${esc(L.label(c))}</i>`).join('')}</span><b>${isClock ? '' : L.turnScore(turn.darts)}</b></li>`).join('')}</ol>
+      : `<div class="tiles mini">${tile('Gemiddelde', fmt(tot.avg, 2))}${tile('Totaal', tot.points)}${tile('Pijlen', tot.darts)}${tile('Hoogste', tot.high ?? '–', '', hi ? turnsText(hi.turns) : '')}</div>`}
+    ${!isClock && series.length ? turnChart(series, { best: hi?.turns || [], avg: tot.avg }) : ''}
+    <ol class="turnlist">${t.turns.map((turn, i) => `<li class="${!isClock && hi?.turns.includes(i + 1) ? 'best' : ''}${!isClock && turn.darts.length < 3 ? ' part' : ''}"><span>${i + 1}</span><span class="darts">${turn.darts.map(c => `<i>${esc(L.label(c))}</i>`).join('')}${!isClock && turn.darts.length < 3 ? ' <small>onvolledig</small>' : ''}</span><b>${isClock ? '' : L.turnScore(turn.darts)}</b></li>`).join('')}</ol>
     <div class="modal-actions"><button class="btn danger ghost" data-act="delete-training" data-arg="${esc(t.id)}">Verwijderen</button><button class="btn primary" data-act="modal-close">Sluiten</button></div>`);
+}
+
+// Pas mijn statistieken aan: vinkjes per speler, apart voor één training en voor al je trainingen.
+// Elk vinkje werkt meteen (het scherm erachter past zich aan) en wordt bewaard in data.settings.statView.
+function statPrefsModal(scope = ui.prefScope, pid = ui.prefPlayer || data.activePlayerId) {
+  const p = player(pid) || player();
+  if (!p || !SV.SCOPES[scope]) return;
+  ui.prefScope = scope; ui.prefPlayer = p.id;
+  const sv = SV.statView(data.settings, p.id);
+  modal(`<h3>Pas mijn statistieken aan</h3>
+    <p class="muted small">Voor <b>${esc(p.name)}</b>. Vink aan wat je wilt zien; het scherm past zich meteen aan. Elke speler heeft zijn eigen keuze.</p>
+    <div class="chips small pref-scopes" role="tablist">${Object.entries(SV.SCOPES).map(([k, x]) => `<button class="chip ${k === scope ? 'on' : ''}" role="tab" aria-selected="${k === scope}" data-act="stat-scope" data-arg="${k}" data-testid="pref-scope-${k}">${esc(x.label)}</button>`).join('')}</div>
+    <p class="muted small pref-sub">${esc(SV.SCOPES[scope].sub)}</p>
+    <div class="checklist" data-testid="pref-list">${SV.optionsFor(scope).map(o => `<label class="check"><input type="checkbox" data-input="stat-pref" data-scope="${scope}" data-arg="${o.key}" data-testid="pref-${scope}-${o.key}" ${sv[scope].has(o.key) ? 'checked' : ''}><span><b>${esc(o.label)}</b>${o.hint?.[scope] ? `<small>${esc(o.hint[scope])}</small>` : ''}</span></label>`).join('')}</div>
+    <div class="modal-actions"><button class="btn ghost" data-act="stat-reset" data-testid="pref-reset" ${sv.custom ? '' : 'disabled'}>Standaardweergave herstellen</button><button class="btn primary" data-act="modal-close">Klaar</button></div>`);
 }
 
 function matchDetail(m) {
@@ -1060,7 +1148,7 @@ VIEWS.more = () => {
       <h3>Instellingen</h3>
       ${toggle('sound', 'Geluidjes')}${toggle('vibrate', 'Trillen bij tikken')}
       ${SP.speechSupported() ? `${toggle('speech', 'Gesproken aanmoedigingen')}
-        <p class="muted small setting-note">Een stem bij een persoonlijk record, je eerste 100+ of 180 en een mooie finish; niet bij elke beurt. Gebruikt de stem van je telefoon. Hoor je niets op een iPhone? Zet de stil-schakelaar aan de zijkant uit en het volume omhoog.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
+        <p class="muted small setting-note">Een enthousiaste stem bij een persoonlijk record, je eerste 100+, elke 180 en een mooie finish; niet bij elke beurt. Gebruikt de stem van je telefoon. Hoor je niets op een iPhone? Zet de stil-schakelaar aan de zijkant uit en het volume omhoog.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
         : '<p class="muted small setting-note">Gesproken aanmoedigingen werken niet in deze browser.</p>'}
       <div class="setting"><span>Thema</span><div class="chips small"><button class="chip ${data.settings.theme === 'dark' ? 'on' : ''}" data-act="theme" data-arg="dark">Donker</button><button class="chip ${data.settings.theme === 'light' ? 'on' : ''}" data-act="theme" data-arg="light">Licht</button></div></div>
     </section>
@@ -1173,6 +1261,7 @@ function finishActiveTraining(showResult = true) {
     return { id: tr.id, playerId: tr.playerId, prevAvg: b.prev, records: diffRecords(b.rec, after), recordKeys: recordKeys(b.rec, after), after, newBadges: [...earnedBadges(data, tr.playerId)].filter(x => !b.badges.has(x)) };
   });
   const main = per.find(x => x.playerId === data.activePlayerId) || per[0];
+  ui.resultPick = null;
   ui.result = { ...main, bestClock: records(main.playerId).clock, group: per.length > 1 ? per : null, players: [...t.players], limitTurns: t.limitTurns, kind: t.kind, goal: per.length === 1 ? t.goal || null : null };
   ui.savedHigh = null;
   if (!ui.result.group) ui.result.suggestShare = shouldSuggestShare(ui.result, saved.find(x => x.id === main.id));
@@ -1692,7 +1781,7 @@ const ACTIONS = {
     }
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
   },
-  'speech-test': () => { SP.call180(); SP.say('Zo klinkt OKKIE. bij een honderdtachtig.'); },
+  'speech-test': () => { SP.call180(); SP.say('Zo klinkt OKKIE. bij een honderdtachtig! Kom op!', { follow: true }); },
   'fb-shot-remove': () => { ui.fb.screenshot = null; render(); },
   'fb-again': () => { ui.fb = { kind: ui.fb.kind, message: '', contact: '', screenshot: null, busy: false, error: '', sent: null, startedAt: Date.now() }; render(); },
   'switch-player': switchPlayerModal,
@@ -1774,6 +1863,13 @@ const ACTIONS = {
   },
   'stats-set': v => { const [k, val] = v.split(':'); ui[k] = val; render(); },
   'stats-last10': () => { ui.statsLast10 = !ui.statsLast10; render(); },
+  'stat-prefs': v => { const [scope, pid] = String(v || '').split('|'); statPrefsModal(SV.SCOPES[scope] ? scope : 'one', player(pid) ? pid : data.activePlayerId); },
+  'stat-scope': v => statPrefsModal(v, ui.prefPlayer),
+  'stat-reset': () => {
+    if (SV.resetStats(data.settings, ui.prefPlayer)) save();
+    render(); statPrefsModal(ui.prefScope, ui.prefPlayer); toast('Standaardweergave hersteld.');
+  },
+  'result-pick': id => { ui.resultPick = id; render(); },
   'open-training': id => { const t = data.trainings.find(x => x.id === id); if (t) trainingDetail(t); },
   'open-match': id => { const m = data.matches.find(x => x.id === id); if (m) matchDetail(m); },
   'delete-training': id => confirmBox('Training verwijderen?', 'Deze training verdwijnt definitief uit je geschiedenis en statistieken.', 'Verwijderen', () => {
@@ -1869,6 +1965,7 @@ function removePlayerData(id, { keepPlayer }) {
   }));
   if (data.active.training?.players?.includes(id)) data.active.training = null;
   if (data.active.match?.players?.some(mp => mp.id === id)) data.active.match = null;
+  if (!keepPlayer) SV.resetStats(data.settings, id);
   ui.setup.players = (ui.setup.players || []).filter(x => x !== id);
   ui.match.players = [];
   if (keepPlayer) return;
@@ -2039,7 +2136,12 @@ document.addEventListener('change', e => {
   if (el.dataset.input === 'setting') {
     data.settings[el.dataset.arg] = el.checked; save();
     // Direct na de tik iets zeggen: zo hoor je dat het werkt (en mag de iPhone daarna ook spreken).
-    if (el.dataset.arg === 'speech') { if (el.checked) SP.say('Gesproken aanmoedigingen staan aan.'); render(); }
+    if (el.dataset.arg === 'speech') { if (el.checked) SP.say('Aanmoedigingen staan aan! Kom op, gooien!'); render(); }
+  }
+  if (el.dataset.input === 'stat-pref') {
+    if (SV.setStat(data.settings, ui.prefPlayer, el.dataset.scope, el.dataset.arg, el.checked)) { save(); render(); }
+    const reset = $('#modal [data-act=stat-reset]');
+    if (reset) reset.disabled = !SV.statView(data.settings, ui.prefPlayer).custom;
   }
   if (el.dataset.input === 'transfer-secrets') prepareTransfer({ secrets: el.checked }).then(() => transferCodeModal(false));
   if (el.dataset.input === 'fb-kind') { ui.fb.kind = el.value === 'idee' ? 'idee' : 'probleem'; render(); }
