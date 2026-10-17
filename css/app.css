@@ -752,6 +752,7 @@ a.link-row, a.link-row:visited { color: var(--text); }
 .goal-line b { color: var(--lime); }
 .goal-line small { color: var(--muted); }
 .setting-note { margin: -2px 0 10px; }
+.speech-mode { margin: 2px 0 8px; flex-wrap: wrap; }
 .setting-note .link { padding: 0 2px; font-size: inherit; }
 
 /* ---------- Delen van een training ---------- */

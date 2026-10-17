@@ -15,6 +15,7 @@ import { DARTCOUNTER_SET, dartCounterTrainings, hasDartCounterSet } from './impo
 import { rulesPage } from './rules.js';
 import * as FB from './feedback.js';
 import * as SP from './speech.js';
+import * as VL from './voice-lines.js';
 import * as M from './motivation.js';
 import * as SC from './share-card.js';
 import * as SV from './stat-prefs.js';
@@ -22,7 +23,7 @@ import { turnChart, bindTurnCharts } from './turn-chart.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.7.1';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -195,22 +196,30 @@ function turnCelebration(score) {
 
 // ---------- Gesproken aanmoedigingen (speech.js): alleen als de speler ze aanzette, nooit bij elke beurt ----------
 const speechOn = () => !!data.settings.speech && SP.speechSupported();
+// "Veel, met grapjes" (standaard) of "Alleen hoogtepunten" (speechMode 'rustig').
+const chatty = () => data.settings.speechMode !== 'rustig';
+const talk = text => { if (text && speechOn() && chatty()) SP.say(text, { follow: true }); };
 // Hoogste beurt uit opgeslagen trainingen/wedstrijden, één keer per sessie berekend.
 function savedHigh(playerId) {
   ui.savedHigh ||= new Map();
   if (!ui.savedHigh.has(playerId)) ui.savedHigh.set(playerId, M.highestTurn(data, playerId));
   return ui.savedHigh.get(playerId);
 }
-function voiceTurn(playerId, score, prevInSession) {
-  if (!speechOn() || !playerId || score < 100) return;
-  const line = SP.turnLine(score, Math.max(savedHigh(playerId), prevInSession || 0));
-  if (!line) return;
-  if (line.call180) SP.call180();
-  if (line.text) SP.say(line.text, { follow: !!line.call180 });
+// Hoogtepunten (speech.js) gaan altijd voor; anders, in de stand "Veel", een zin uit voice-lines.js (more()).
+function voiceTurn(playerId, score, prevInSession, more) {
+  if (!speechOn()) return;
+  const line = playerId && score >= 100 ? SP.turnLine(score, Math.max(savedHigh(playerId), prevInSession || 0)) : null;
+  if (line) {
+    if (line.call180) SP.call180();
+    if (line.text) SP.say(line.text, { follow: !!line.call180 });
+    return;
+  }
+  if (more && chatty()) { const text = more(); if (text) SP.say(text); }
 }
 const VOICE_KEY = 'okkie.voice.v1';
 function voiceTraining(r, t) {
-  if (!speechOn() || r.group) return;
+  if (!speechOn()) return;
+  if (r.group) return talk(VL.doneTalk({ group: true }));
   const keys = ['avg30', 'avg60', 'avg99', 'clock', 'tons'].filter(k => r.recordKeys?.includes(k));
   const records = keys.map(k => ({ label: RECORD_LABELS[k][0], spoken: k === 'clock' ? r.after[k] + ' pijlen' : k === 'tons' ? r.after[k] + ' keer honderd plus' : SP.spokenNumber(r.after[k]) + ' gemiddeld' }));
   const tot = L.trainingTotals(t);
@@ -222,7 +231,8 @@ function voiceTraining(r, t) {
     improved = M.improvedClearly(tot.avg, M.comparable(data.trainings, t.playerId, t.limitTurns).filter(x => x.t.id !== t.id));
   }
   const line = SP.trainingLine({ records, improved, goalReached });
-  if (line && SP.say(line.text) && line.improvement) { try { localStorage.setItem(VOICE_KEY, JSON.stringify({ ...state, improvedAt: Date.now() })); } catch { /* geen opslag */ } }
+  if (!line) return talk(VL.doneTalk({ kind: t.kind, avg: tot.avg, prevAvg: r.prevAvg ?? null, darts: t.kind === 'clock' ? L.clockState(t).darts : tot.darts }));
+  if (SP.say(line.text, { follow: true }) && line.improvement) { try { localStorage.setItem(VOICE_KEY, JSON.stringify({ ...state, improvedAt: Date.now() })); } catch { /* geen opslag */ } }
 }
 
 // ---------- Modal ----------
@@ -1148,7 +1158,8 @@ VIEWS.more = () => {
       <h3>Instellingen</h3>
       ${toggle('sound', 'Geluidjes')}${toggle('vibrate', 'Trillen bij tikken')}
       ${SP.speechSupported() ? `${toggle('speech', 'Gesproken aanmoedigingen')}
-        <p class="muted small setting-note">Een enthousiaste stem bij een persoonlijk record, je eerste 100+, elke 180 en een mooie finish; niet bij elke beurt. Gebruikt de stem van je telefoon. Hoor je niets op een iPhone? Zet de stil-schakelaar aan de zijkant uit en het volume omhoog.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
+        ${data.settings.speech ? `<div class="chips small speech-mode" role="group" aria-label="Hoeveel praat de stem?">${[['veel', 'Veel, met grapjes'], ['rustig', 'Alleen hoogtepunten']].map(([k, l]) => `<button class="chip ${(chatty() ? 'veel' : 'rustig') === k ? 'on' : ''}" data-act="speech-mode" data-arg="${k}" aria-pressed="${(chatty() ? 'veel' : 'rustig') === k}">${l}</button>`).join('')}</div>` : ''}
+        <p class="muted small setting-note" data-testid="speech-note">${!data.settings.speech || chatty() ? 'Een enthousiaste stem die je aanmoedigt tijdens het gooien, bij elke 100+ en 180, met finish-calls bij een wedstrijd en af en toe een grapje.' : 'Alleen bij een persoonlijk record, je eerste 100+, elke 180 en een mooie finish.'} Gebruikt de stem van je telefoon. Hoor je niets op een iPhone? Zet de stil-schakelaar aan de zijkant uit en het volume omhoog.${data.settings.speech ? ' <button class="link" data-act="speech-test">Laat horen</button>' : ''}</p>`
         : '<p class="muted small setting-note">Gesproken aanmoedigingen werken niet in deze browser.</p>'}
       <div class="setting"><span>Thema</span><div class="chips small"><button class="chip ${data.settings.theme === 'dark' ? 'on' : ''}" data-act="theme" data-arg="dark">Donker</button><button class="chip ${data.settings.theme === 'light' ? 'on' : ''}" data-act="theme" data-arg="light">Licht</button></div></div>
     </section>
@@ -1206,6 +1217,7 @@ function startScore() {
   ui.mod = 1;
   save();
   go('play-score');
+  talk(VL.startTalk('score'));
 }
 
 function startClock() {
@@ -1214,6 +1226,7 @@ function startClock() {
   ui.mod = 1;
   save();
   go('play-clock');
+  talk(VL.startTalk('clock'));
 }
 
 // Gemiddelde van de laatste eerdere scoretraining van deze speler met exact dezelfde instelling.
@@ -1288,8 +1301,10 @@ function addDart(code) {
   if (tr.kind === 'clock') {
     const st = L.clockState({ turns: [...tr.turns, { darts: tr.pending }] });
     if (st.done || tr.pending.length === 3) {
+      const before = L.clockState(tr).targetIndex;
       tr.turns.push({ at: now(), darts: tr.pending, p: 0 });
       tr.pending = [];
+      talk(VL.clockTalk(before, st.targetIndex, st.targetIndex - before));
     }
     save();
     if (st.done) { celebrate('KLAAR!', `${st.darts} pijlen`, 'win'); beep('win'); finishActiveTraining(true); return; }
@@ -1304,8 +1319,13 @@ function addDart(code) {
     tr.pending = [];
     save();
     turnCelebration(score);
-    if (tr.kind === 'score') voiceTurn(tr.players[idx], score, prevInSession);
-    if (trainingDone(tr)) {
+    // Laatste beurt: geen extra zin, dan klinkt de afsluiting van de training.
+    const last = trainingDone(tr);
+    if (tr.kind === 'score') voiceTurn(tr.players[idx], score, prevInSession, last ? null : () => {
+      const mine = tr.turns.filter(x => (x.p ?? 0) === idx);
+      return VL.turnTalk({ darts: mine[mine.length - 1].darts, scores: mine.filter(x => x.darts.length === 3).map(x => L.turnScore(x.darts)), n: mine.length, limit: tr.limitTurns, progress: idx === 0 });
+    });
+    if (last) {
       finishActiveTraining(true);
       return;
     }
@@ -1342,6 +1362,7 @@ function startMatch() {
   ui.mod = 1;
   save();
   go('play-match');
+  talk(VL.startTalk('match'));
 }
 
 function addMatchDart(code) {
@@ -1357,12 +1378,22 @@ function addMatchDart(code) {
     const prevInMatch = speechOn() ? L.matchState(m).totals[p].high : 0;
     leg.turns.push({ p, darts: m.pending, at: now() });
     m.pending = [];
-    if (r.bust) { celebrate('BUST', `${m.players[p].name} blijft op ${ls.remaining[p]}`, 'bust'); beep('bust'); haptic([60, 40, 60]); }
+    if (r.bust) { celebrate('BUST', `${m.players[p].name} blijft op ${ls.remaining[p]}`, 'bust'); beep('bust'); haptic([60, 40, 60]); talk(VL.bustTalk()); }
     else if (r.finished) {
-      if (speechOn()) { const last = leg.turns[leg.turns.length - 1].darts; const line = SP.checkoutLine(r.scored, last[last.length - 1]); if (line) SP.say(line.text); }
+      if (speechOn()) {
+        const last = leg.turns[leg.turns.length - 1].darts, lastDart = last[last.length - 1];
+        const line = SP.checkoutLine(r.scored, lastDart);
+        if (line) SP.say(line.text); else talk(VL.checkoutTalk(r.scored, lastDart));
+      }
       return legWon(m, p, r.scored);
     }
-    else { turnCelebration(r.scored); voiceTurn(m.players[p].id, r.scored, prevInMatch); }
+    else {
+      turnCelebration(r.scored);
+      voiceTurn(m.players[p].id, r.scored, prevInMatch, () => {
+        const next = L.legState(leg, m.settings.start, m.players.length, m.settings.doubleOut);
+        return VL.matchTalk({ darts: leg.turns[leg.turns.length - 1].darts, score: r.scored, next: next.remaining[next.toThrow], doubleOut: m.settings.doubleOut });
+      });
+    }
   }
   save();
   render();
@@ -1781,7 +1812,12 @@ const ACTIONS = {
     }
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
   },
-  'speech-test': () => { SP.call180(); SP.say('Zo klinkt OKKIE. bij een honderdtachtig! Kom op!', { follow: true }); },
+  'speech-test': () => { SP.call180(); SP.say(chatty() ? 'Zo klinkt OKKIE. bij een honderdtachtig! En bij nul punten? Het bord hangt hier, hoor!' : 'Zo klinkt OKKIE. bij een honderdtachtig! Kom op!', { follow: true }); },
+  'speech-mode': v => {
+    if (v === 'rustig') data.settings.speechMode = 'rustig'; else delete data.settings.speechMode;
+    save(); render();
+    SP.say(v === 'rustig' ? 'Oké. Ik zeg alleen nog iets bij de hoogtepunten.' : 'Lekker! Ik moedig je vaker aan. En soms een grapje!', { priority: true });
+  },
   'fb-shot-remove': () => { ui.fb.screenshot = null; render(); },
   'fb-again': () => { ui.fb = { kind: ui.fb.kind, message: '', contact: '', screenshot: null, busy: false, error: '', sent: null, startedAt: Date.now() }; render(); },
   'switch-player': switchPlayerModal,
