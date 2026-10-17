@@ -1,6 +1,7 @@
 // OKKIE community: alleen geaggregeerde scoretrainingen publiceren.
 // Lokale trainingdata, pijlen, spelersnamen en matches worden NIET naar de server gestuurd.
-import { points } from './logic.js';
+import { points, dayStreak, hitDistribution, topHits } from './logic.js';
+import { activityDates, earnedBadges } from './achievements.js';
 import { API_BASE } from '../community/config.js';
 
 export const COMMUNITY_KEY = 'okkie.community.v1';
@@ -64,6 +65,7 @@ export function publicSnapshots(data, playerId) {
     t && t.playerId === playerId && t.kind === 'score' && t.finishedAt && (fromOtherPhone(t) || (!t.summary &&
     Array.isArray(t.turns) && t.turns.length && t.turns.every(turn => Array.isArray(turn.darts) && turn.darts.length === 3)))
   ).sort((a,b) => new Date(a.finishedAt) - new Date(b.finishedAt) || String(a.id).localeCompare(String(b.id)));
+  const perSession = [];   // punten en pijlen per training, op volgorde (voor de ontwikkeling: laatste 10 tegenover de 10 daarvoor)
   for (const t of sessions) {
     const day = new Date(t.finishedAt);
     if (!Number.isFinite(day.getTime())) continue;
@@ -72,6 +74,7 @@ export function publicSnapshots(data, playerId) {
     if (fromOtherPhone(t)) {
       const s = t.summary;
       const source = { darts: s.darts, points: s.points, highestTurn: s.high || 0, hits100: s.tons || 0, hits140: s.t140 || 0, hits180: s.t180 || 0 };
+      perSession.push({ points: source.points, darts: source.darts });
       for (const key of ['all', 'week:' + w, 'month:' + month]) {
         if (!groups.has(key)) groups.set(key, summaryTemplate(key));
         addSummary(groups.get(key), source);
@@ -90,6 +93,7 @@ export function publicSnapshots(data, playerId) {
       hits140: turnPoints.filter(n => n >= 140).length,
       hits180: turnPoints.filter(n => n === 180).length
     };
+    perSession.push({ points: source.points, darts: source.darts });
     for (const key of ['all', 'week:' + w, 'month:' + month]) {
       if (!groups.has(key)) groups.set(key, summaryTemplate(key));
       addSummary(groups.get(key), source);
@@ -97,6 +101,16 @@ export function publicSnapshots(data, playerId) {
   }
   // Geen exacte trainingsmomenten of losse dartworpen worden verstuurd.
   const all = groups.get('all');
+  // 1.7.3: alleen in het totaal ook dagen op rij, aantal badges, ontwikkeling en favoriete vak (meest geraakt).
+  if (all?.sessions) {
+    const safe = { trainings: data.trainings || [], matches: data.matches || [] };
+    all.streak = dayStreak(activityDates(safe, playerId));
+    all.badges = earnedBadges(safe, playerId).size;
+    all.favorite = topHits(hitDistribution(sessions.filter(t => !fromOtherPhone(t)).flatMap(t => t.turns)), 'all', 1)[0]?.[0] ?? null;
+    const avg = list => { const p = list.reduce((s, x) => s + x.points, 0), d = list.reduce((s, x) => s + x.darts, 0); return d ? p / d * 3 : null; };
+    const last = avg(perSession.slice(-10)), prev = avg(perSession.slice(-20, -10));
+    all.delta10 = perSession.length >= 20 && last !== null && prev !== null ? Math.round((last - prev) * 100) / 100 : null;
+  }
   const dated = [...groups.values()].filter(x => x.period !== 'all' && x.sessions > 0).slice(-189);
   return all?.sessions ? [all, ...dated] : dated;
 }

@@ -32,6 +32,9 @@ function renderBoard(result) {
   $('#rankings').innerHTML = '<ol class="darters" data-testid="darters-list">' + rows.map((r, i) => {
     // Beste trainingen alleen tonen als ze er zijn (30/60/99 pijlen); alles staat ook in het profiel (tik op de naam).
     const bests = [[30, r.best30, 10], [60, r.best60, 20], [99, r.best99, 33]].filter(([, v]) => v != null).map(([n, v, t]) => 'beste ' + n + ' <b>' + best(v, t) + '</b>');
+    // 1.7.3: dagen op rij en badges (uit het totaal van de speler); favoriete vak staat in het profiel.
+    if (r.streak >= 2) bests.push('🔥 <b>' + fmt(r.streak, 0) + '</b> dagen op rij');
+    if (r.badges != null) bests.push('🏅 <b>' + fmt(r.badges, 0) + '</b> badges');
     return '<li><span class="d-rank">' + (i + 1) + '</span><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' + esc(r.nickname) + '</button>' +
       '<span class="d-avg" title="gemiddelde per 3 pijlen"><small>gem.</small> <strong>' + fmt(per3(r.points, r.darts)) + '</strong></span>' +
       '<span class="d-stats"><span><b>' + fmt(r.sessions, 0) + '</b> ' + (r.sessions === 1 ? 'training' : 'trainingen') + '</span><span>hoogste beurt <b>' + fmt(r.highestTurn, 0) + '</b></span>' +
@@ -56,7 +59,11 @@ async function showProfile(handle) {
       '<div class="mini-stats"><div><span>Gemiddelde</span><b>' + fmt(per3(t.points, t.darts)) + '</b></div>' +
       '<div><span>Trainingen</span><b>' + fmt(t.sessions, 0) + '</b></div><div><span>Hoogste beurt</span><b>' + fmt(t.highestTurn, 0) + '</b></div>' +
       '<div><span>Beste 30 / 60 / 99</span><b>' + best(t.best30, 10) + ' / ' + best(t.best60, 20) + ' / ' + best(t.best99, 33) + '</b></div>' +
-      '<div><span>100+ / 140+ / 180</span><b>' + fmt(t.hits100, 0) + ' / ' + fmt(t.hits140, 0) + ' / ' + fmt(t.hits180, 0) + '</b></div></div>' +
+      '<div><span>100+ / 140+ / 180</span><b>' + fmt(t.hits100, 0) + ' / ' + fmt(t.hits140, 0) + ' / ' + fmt(t.hits180, 0) + '</b></div>' +
+      '<div><span>Dagen op rij</span><b>' + (t.streak != null ? fmt(t.streak, 0) : '–') + '</b></div>' +
+      '<div><span>Badges</span><b>' + (t.badges != null ? fmt(t.badges, 0) : '–') + '</b></div>' +
+      '<div><span>Laatste 10 vs 10 daarvoor</span><b>' + (t.delta10 != null ? (t.delta10 >= 0 ? '+' : '−') + fmt(Math.abs(t.delta10), 1) : '–') + '</b></div>' +
+      '<div><span>Favoriete vak</span><b>' + (t.favorite ? esc(t.favorite) : '–') + '</b></div></div>' +
       (r.trend?.length ? '<p class="note">Laatste weken: ' + r.trend.slice(0, 6).reverse().map(w => esc(w.period.slice(-3)) + ' ' + fmt(per3(w.points, w.darts), 1)).join(' · ') + '</p>' : '')
       : '<p class="muted">Nog geen gedeelde training.</p>') +
       '<button type="button" class="action secondary" data-action="close-profile">Sluiten</button>';
