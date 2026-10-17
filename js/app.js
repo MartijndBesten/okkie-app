@@ -24,7 +24,7 @@ import { turnChart, bindTurnCharts } from './turn-chart.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.7.3';
+export const APP_VERSION = '1.7.4';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -412,7 +412,7 @@ function resumeCard(type, a) {
       : a.players.length > 1 ? `${names(a.players).map(esc).join(', ')} · ${esc(names([a.players[curIdx(a)]])[0])} is aan de beurt`
       : `${tot.darts}${a.limitTurns ? ' / ' + a.limitTurns * 3 : ''} pijlen · gem. ${fmt(tot.avg)}`;
     return `<section class="resume"><div><small>Bezig</small><b>${esc(trainingTitle(a))}</b><span>${sub}</span></div>
-      <button class="btn primary" data-act="resume-training">Verder</button></section>`;
+      <span class="resume-actions"><button class="btn ghost" data-act="finish-training" aria-label="Training stoppen">Stoppen</button><button class="btn primary" data-act="resume-training">Verder</button></span></section>`;
   }
   const st = L.matchState(a);
   return `<section class="resume"><div><small>Wedstrijd bezig</small><b>${a.players.map(p => esc(p.name)).join(' – ')}</b><span>${a.settings.start} · legs ${st.won.join('–')}</span></div>
@@ -567,7 +567,7 @@ VIEWS['play-score'] = () => {
     ${typeBox()}
     ${keypad()}
     <div class="play-actions">
-      <button class="btn ghost small" data-act="finish-training">${t.turns.length ? 'Klaar & bewaren' : 'Stoppen'}</button>
+      <button class="btn ghost small" data-act="finish-training">Stoppen</button>
     </div>
   </div>`;
 };
@@ -599,7 +599,7 @@ VIEWS['play-clock'] = () => {
     <div class="turn-row">${dartSlots(pend)}<div class="turn-total"><small>Tip</small><strong class="tip">Alles op ${targetLabel} telt</strong></div></div>
     ${typeBox()}
     ${keypad({ highlight: st.target })}
-    <div class="play-actions"><button class="btn ghost small" data-act="finish-training">Stoppen & bewaren</button></div>
+    <div class="play-actions"><button class="btn ghost small" data-act="finish-training">Stoppen</button></div>
   </div>`;
 };
 
@@ -1249,6 +1249,24 @@ function compareLine(avg, prev) {
 
 // Training afronden en in de geschiedenis zetten (bij samen trainen: één training per speler).
 // showResult: naar uitslagscherm.
+// Pijlen in deze training tot nu toe (alle spelers), inclusief de nog niet afgemaakte beurt.
+const dartsThrown = t => t.turns.reduce((n, x) => n + x.darts.length, 0) + t.pending.length;
+
+// Weggooien: uitsluitend de lopende training verdwijnt. Niets wordt opgeslagen, berekend of gesynchroniseerd;
+// koppelcodes van meegooiende vrienden komen vrij. Eerdere trainingen, spelers en instellingen blijven zoals ze zijn.
+function discardActiveTraining() {
+  const t = data.active.training;
+  closeModal();
+  if (!t) return go('home');
+  G.releaseGuests(t.id);
+  data.active.training = null;
+  ui.savedHigh = null;
+  ui.resultPick = null;
+  save();
+  go('home');
+  toast('Training weggegooid. Er is niets bewaard.');
+}
+
 function finishActiveTraining(showResult = true) {
   const t = data.active.training;
   if (!t) return;
@@ -1861,12 +1879,30 @@ const ACTIONS = {
   },
   'toggle-type': () => { ui.typing = !ui.typing; render(); },
   'pause': () => { save(); go('home'); toast('Gepauzeerd. Je kunt later verder via Home.'); },
+  // Stoppen: drie keuzes. Bewaren = zoals voorheen (uitslag, records, badges, Darters). Weggooien = alleen deze
+  // onafgemaakte training weg, verder niets. Verder trainen = terug naar het speelscherm (ook vanaf Home).
   'finish-training': () => {
     const t = data.active.training;
-    if (!t.turns.length && !t.pending.length) { data.active.training = null; save(); return go('home'); }
+    if (!t) return;
+    if (!t.turns.length && !t.pending.length) { discardActiveTraining(); return; }
+    const thrown = dartsThrown(t);
     const lim = t.players.length > 1 ? null : L.trainingLimitDarts(t);
-    const text = t.players.length > 1 ? 'Iedereen krijgt zijn eigen training in de geschiedenis, zoals de stand nu is.' : lim ? `Je hebt ${L.trainingTotals(t).darts + t.pending.length} van de ${lim} pijlen gegooid. De training wordt bewaard zoals hij nu is.` : 'De training wordt bewaard in je geschiedenis.';
-    confirmBox('Training afronden?', text, 'Bewaren', () => { closeModal(); finishActiveTraining(true); }, false);
+    const keep = t.players.length > 1 ? 'Iedereen krijgt zijn eigen training in de geschiedenis, zoals de stand nu is.'
+      : lim ? `Je hebt ${thrown} van de ${lim} pijlen gegooid; bewaren kan ook zo.` : 'Bewaren zet de training in je geschiedenis.';
+    modal(`<h3>Training stoppen?</h3><p>${esc(keep)} Weggooien bewaart niets.</p>
+      <div class="modal-actions col">
+        <button class="btn primary" data-act="modal-ok">Bewaren</button>
+        <button class="btn danger" data-act="finish-discard">Weggooien</button>
+        <button class="btn ghost" data-act="finish-resume">Verder trainen</button>
+      </div>`);
+    confirmBox.ok = () => { closeModal(); finishActiveTraining(true); };
+  },
+  'finish-resume': () => { closeModal(); if (!PLAY_VIEWS.has(ui.view)) ACTIONS['resume-training'](); },
+  'finish-discard': () => {
+    const t = data.active.training;
+    if (!t) return closeModal();
+    const n = dartsThrown(t);
+    confirmBox('Pijlen weggooien?', `${n === 1 ? 'De ene pijl' : `De ${n} pijlen`} van deze training ${n === 1 ? 'gaat' : 'gaan'} verloren. Er wordt niets bewaard: geen uitslag, records of badges, en er gaat niets naar Darters. Je eerdere trainingen blijven gewoon staan.`, 'Weggooien', discardActiveTraining);
   },
   'again': () => {
     const t = data.trainings.find(x => x.id === ui.result?.id);
