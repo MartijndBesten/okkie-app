@@ -16,6 +16,7 @@ import { rulesPage } from './rules.js';
 import * as FB from './feedback.js';
 import * as SP from './speech.js';
 import * as VL from './voice-lines.js';
+import { pingUsage } from './usage-ping.js';
 import * as M from './motivation.js';
 import * as SC from './share-card.js';
 import * as SV from './stat-prefs.js';
@@ -23,7 +24,7 @@ import { turnChart, bindTurnCharts } from './turn-chart.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.7.1';
+export const APP_VERSION = '1.7.2';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -1165,7 +1166,7 @@ VIEWS.more = () => {
     </section>
     <section class="card about">
       ${logoSVG({ height: 34 })}
-      <p class="muted small">Versie ${APP_VERSION}. OKKIE komt van "oche" (spreek uit: okkie), de werplijn waar je achter staat bij darts. Geen account, geen tracking, geen reclame en geen aankopen in de app.</p>
+      <p class="muted small">Versie ${APP_VERSION}. OKKIE komt van "oche" (spreek uit: okkie), de werplijn waar je achter staat bij darts. Geen account, geen reclame en geen aankopen in de app. Geen advertentie- of analysediensten van andere bedrijven; wel een eigen, anonieme dagteller (één seintje per dag, zonder ID). Zie okkiedarts.nl/privacy.</p>
       <p class="maker-line"><a class="maker" href="https://denckh.nl/" target="_blank" rel="noopener" aria-label="Ontwikkeld door Denckh (naar denckh.nl)"><span class="maker-role">Ontwikkeld door</span><img class="on-dark" src="./icons/denckh-logo-signature-light.svg" alt="Denckh" width="92" height="28"><img class="on-light" src="./icons/denckh-logo-signature.svg" alt="Denckh" width="92" height="28"></a></p>
     </section>
   </main>`;
@@ -2249,6 +2250,7 @@ function sendGuests(manual = false) {
 function syncOtherPhones() {
   sendGuests();
   resumePendingSync(data);   // wat bij afsluiten of offline nog niet verstuurd was
+  pingUsage({ version: APP_VERSION, send: request }).catch(() => {});   // anonieme dagteller (usage-ping.js)
   G.pullInbox(data, save).then(n => {
     if (n) { toast(n === 1 ? 'Een resultaat van een andere telefoon is toegevoegd.' : `${n} resultaten van andere telefoons zijn toegevoegd.`); if (!PLAY_VIEWS.has(ui.view)) render(); }
   }).catch(() => {});
