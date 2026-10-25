@@ -6,7 +6,7 @@ export const STORAGE_KEY = 'oche.data';
 export const LEGACY_KEY = 'dartlog.v1';
 export const DATA_VERSION = 2;
 
-const PLAYER_COLORS = ['#3ddc84', '#ff5a5f', '#ffc53d', '#4cc9f0', '#c77dff', '#ff8fab'];
+const PLAYER_COLORS = ['#3ddc84', '#ff5a5f', '#ffc53d', '#4cc9f0', '#c77dff', '#ff8fab', '#ff9f43', '#e9ecef'];
 
 export function uid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();

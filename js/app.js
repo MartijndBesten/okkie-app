@@ -24,7 +24,7 @@ import { turnChart, bindTurnCharts } from './turn-chart.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.7.4';
+export const APP_VERSION = '1.7.5';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -70,7 +70,7 @@ function sanitizeActive() {
   const okTraining = a.training && Array.isArray(a.training.turns) && Array.isArray(a.training.pending);
   const okMatch = a.match && Array.isArray(a.match.legs) && a.match.legs.length && Array.isArray(a.match.pending);
   data.active = { training: okTraining ? a.training : null, match: okMatch ? a.match : null };
-  // Oudere lopende trainingen hadden één speler; nu kunnen 1-4 spelers om de beurt gooien.
+  // Oudere lopende trainingen hadden één speler; nu kunnen 1-8 spelers om de beurt gooien.
   const t = data.active.training;
   if (t && !Array.isArray(t.players)) { t.players = [t.playerId]; t.turns.forEach(x => { x.p = 0; }); }
   if (t) t.players = t.players.filter(id => data.players.some(p => p.id === id));
@@ -398,7 +398,8 @@ function tile(label, value, extra = '', sub = '') {
   return `<div class="tile ${extra}"><span>${esc(label)}</span><strong>${value}</strong>${sub ? `<small>${sub}</small>` : ''}</div>`;
 }
 
-// ----- Samen trainen: 1-4 spelers gooien om de beurt 3 pijlen -----
+// ----- Samen trainen: 1-8 spelers gooien om de beurt 3 pijlen -----
+const MAX_TRAIN = 8; // wedstrijd 301/501 blijft max. 4 (store.js, guest-sync)
 function curIdx(t) { return t.turns.length % t.players.length; }
 function playerTurns(t, i) { return t.turns.filter(x => x.p === i); }
 function subTotals(t, i) { return L.trainingTotals({ turns: playerTurns(t, i) }); }
@@ -448,11 +449,11 @@ VIEWS.train = () => {
       <p class="choice-info">${info}</p>
       ${goalLine(ps, s)}
       ${s.turns === -1 ? `<label class="inline">Aantal beurten <input type="number" min="1" max="200" inputmode="numeric" value="${s.custom}" data-input="custom-turns"></label>` : ''}
-      <h3 class="who">Wie gooien er? <small>max. 4, om de beurt</small></h3>
+      <h3 class="who">Wie gooien er? <small>max. ${MAX_TRAIN}, om de beurt</small></h3>
       <ol class="match-players" data-testid="train-players">${ps.map((id, i) => `<li><span><i class="dot" style="background:${esc(player(id).color)}"></i> ${esc(player(id).name)}${G.guestLink(id)?.code ? ' <span class="linked" title="Gekoppeld: deze training gaat naar zijn eigen OKKIE.">🔗</span>' : ''}</span>
         ${i > 0 ? `<button class="icon-btn small" data-act="tp-up" data-arg="${i}" aria-label="Eerder gooien">↑</button>` : ''}
         ${ps.length > 1 ? `<button class="icon-btn small" data-act="tp-remove" data-arg="${i}" aria-label="Niet meedoen">✕</button>` : ''}</li>`).join('')}</ol>
-      ${ps.length < 4 ? `<button class="btn secondary add-btn" data-act="add-player-open" data-arg="train" data-testid="add-player">+ Speler toevoegen</button>` : ''}
+      ${ps.length < MAX_TRAIN ? `<button class="btn secondary add-btn" data-act="add-player-open" data-arg="train" data-testid="add-player">+ Speler toevoegen</button>` : ''}
       <button class="btn primary big" data-act="start-score" data-testid="start-score">${ps.length > 1 ? `Start met ${ps.length} spelers` : 'Start scoretraining'}</button>
     </section>
     <section class="card">
@@ -477,7 +478,7 @@ function goalLine(ps, s) {
 function addPlayerModal(ctx = ui.addCtx) {
   ui.addCtx = ctx;
   const inList = ctx === 'match' ? ui.match.players.map(p => p.id) : setupPlayers();
-  if (inList.length >= 4) return closeModal();
+  if (inList.length >= (ctx === 'match' ? 4 : MAX_TRAIN)) return closeModal();
   const others = data.players.filter(p => !inList.includes(p.id));
   const act = ctx === 'match' ? 'mp-add' : 'tp-add';
   modal(`<h3>Speler toevoegen</h3>
@@ -626,7 +627,7 @@ VIEWS['result-training'] = () => {
       .sort((a, b) => b.tot.avg - a.tot.avg);
     const gsv = SV.statView(data.settings, data.activePlayerId);
     const pick = rows.find(g => g.playerId === ui.resultPick) || rows.find(g => g.playerId === data.activePlayerId) || rows[0];
-    const medal = i => ['🥇', '🥈', '🥉', '4'][i];
+    const medal = i => ['🥇', '🥈', '🥉'][i] || String(i + 1);
     const extra = rows.filter(g => g.newBadges.length);
     return `${header('Uitslag', 'home')}<main class="page">
       <section class="result-hero win"><small>${esc(trainingTitle(rows[0].t))} · ${rows.length} spelers</small><strong data-testid="group-winner">${esc(rows[0].p?.name)}</strong><span>hoogste gemiddelde: ${fmt(rows[0].tot.avg, 2)}</span></section>
@@ -1210,7 +1211,7 @@ function startScore() {
   ui.savedHigh = null;
   const s = ui.setup;
   const turns = s.turns === -1 ? Math.max(1, Math.min(200, Number(s.custom) || 10)) : s.turns;
-  const players = setupPlayers().slice(0, 4);
+  const players = setupPlayers().slice(0, MAX_TRAIN);
   // Persoonlijk doel (motivation.js) alleen bij alleen trainen: vergeleken met je eigen eerdere trainingen.
   const goal = players.length === 1 ? M.goalFor(data.trainings, players[0], turns || null) : null;
   data.active.training = { id: S.uid(), playerId: players[0], players, kind: 'score', limitTurns: turns || null, startedAt: now(), turns: [], pending: [], ...(goal ? { goal } : {}) };
@@ -1853,7 +1854,7 @@ const ACTIONS = {
   'setup-turns': v => { ui.setup.kind = 'score'; ui.setup.turns = Number(v); render(); },
   'start-score': startScore,
   'add-player-open': ctx => addPlayerModal(ctx === 'match' ? 'match' : 'train'),
-  'tp-add': id => { const ps = setupPlayers(); if (player(id) && ps.length < 4 && !ps.includes(id)) ps.push(id); playerAdded(); },
+  'tp-add': id => { const ps = setupPlayers(); if (player(id) && ps.length < MAX_TRAIN && !ps.includes(id)) ps.push(id); playerAdded(); },
   'tp-remove': i => { setupPlayers().splice(Number(i), 1); render(); },
   'tp-up': i => { const a = setupPlayers(); const n = Number(i); [a[n - 1], a[n]] = [a[n], a[n - 1]]; render(); },
   'start-clock': startClock,
@@ -2084,7 +2085,7 @@ const FORMS = {
     if (!p) { p = S.newPlayer(nickname, data.players.length); data.players.push(p); save(); }
     G.linkGuest(p.id, code, nickname);
     if (ui.addCtx === 'match') { if (!ui.match.players.some(x => x.id === p.id) && ui.match.players.length < 4) ui.match.players.push({ id: p.id, name: p.name }); }
-    else { const ps = setupPlayers(); if (!ps.includes(p.id) && ps.length < 4) ps.push(p.id); }
+    else { const ps = setupPlayers(); if (!ps.includes(p.id) && ps.length < MAX_TRAIN) ps.push(p.id); }
     closeModal(); render();
     toast(`${nickname} is gekoppeld. Na afloop gaat ${ui.addCtx === 'match' ? 'de uitslag' : 'de training'} naar zijn eigen OKKIE.`);
   },
@@ -2118,7 +2119,7 @@ const FORMS = {
     if (p && getAccount(p.id) && !ps.includes(p.id)) return toast(`${p.name} heeft op deze telefoon een eigen profiel. Gooit ${p.name} zelf? Kies dan + ${p.name}. Anders: kies een andere naam.`);
     if (!p) { p = S.newPlayer(name, data.players.length); data.players.push(p); save(); }
     if (ps.includes(p.id)) return toast(`${p.name} doet al mee.`);
-    if (ps.length >= 4) return toast('Maximaal 4 spelers.');
+    if (ps.length >= MAX_TRAIN) return toast(`Maximaal ${MAX_TRAIN} spelers.`);
     ps.push(p.id);
     playerAdded();
   },

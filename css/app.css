@@ -622,6 +622,13 @@ body.playing .toast { bottom: calc(16px + env(safe-area-inset-bottom)); }
 .gp.n2 { grid-template-columns: 1fr 1fr; }
 .gp.n3 { grid-template-columns: repeat(3, 1fr); }
 .gp.n4 { grid-template-columns: repeat(4, 1fr); }
+.gp.n5, .gp.n6 { grid-template-columns: repeat(3, 1fr); }
+.gp.n7, .gp.n8 { grid-template-columns: repeat(4, 1fr); }
+/* 5-8 spelers: twee rijen, dus compacter (alleen naam en totaal; gemiddelde staat groot op het scorebord) */
+.gp.n5, .gp.n6, .gp.n7, .gp.n8 { gap: 4px; }
+.gp.n5 .gp-p, .gp.n6 .gp-p, .gp.n7 .gp-p, .gp.n8 .gp-p { padding: 3px 6px; border-radius: 10px; }
+.gp.n5 .gp-p strong, .gp.n6 .gp-p strong, .gp.n7 .gp-p strong, .gp.n8 .gp-p strong { font-size: 1.05rem; }
+.gp.n5 .gp-p small, .gp.n6 .gp-p small, .gp.n7 .gp-p small, .gp.n8 .gp-p small { display: none; }
 .gp-p { background: var(--surface); border: 2px solid transparent; border-radius: 14px; padding: 5px 8px; display: grid; min-width: 0; opacity: .62; transition: opacity .2s, border-color .2s; }
 .gp-p.up { opacity: 1; border-color: var(--accent); }
 .gp-p b { display: flex; align-items: center; gap: 5px; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
