@@ -777,3 +777,6 @@ a.link-row, a.link-row:visited { color: var(--text); }
 body::before{ content:"";position:fixed;left:0;right:0;top:0;height:var(--sat);background:var(--bg);z-index:30;pointer-events:none}
 /* Lopende training op Home: Stoppen (keuze: bewaren, weggooien, verder) naast Verder. */
 .resume-actions { display: flex; gap: 8px; margin-left: auto; flex: none; }
+/* OKKIE. Club op het startscherm (1.9.0) */
+.action.club { border-color: rgba(184, 255, 60, .45); }
+.new-tag { font-style: normal; font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--accent, #b8ff3c); color: #07120d; border-radius: 99px; padding: 1px 7px; margin-left: 6px; vertical-align: 2px; }

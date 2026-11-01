@@ -256,6 +256,12 @@ document.addEventListener('change', async e => {
   } else if (!e.target.checked && on) {
     if (!confirm('Delen uitzetten? Je verdwijnt meteen uit Darters en je gedeelde cijfers worden online gewist. Je trainingen op deze telefoon blijven.')) { e.target.checked = true; return; }
     try {
+      if (acct.club) {
+        // Lid van een OKKIE. Club: alleen niet meer openbaar; het profiel blijft voor de club bestaan.
+        await request('/v1/me', 'PATCH', { enabled: false }, acct.token);
+        upsertAccount(pid, { ...acct, groupsOnly: true }); notify('Delen staat uit. Je staat niet meer in Darters; je club blijft gewoon werken.'); refreshBoard();
+        return;
+      }
       await request('/v1/me', 'DELETE', null, acct.token);
       dropAccount(pid); notify('Delen staat uit. Je staat niet meer in Darters; je trainingen blijven op deze telefoon.'); refreshBoard();
     } catch (err) { e.target.checked = true; notify(err.message, true); }

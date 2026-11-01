@@ -36,3 +36,6 @@
 .parent button:disabled{opacity:.5;cursor:not-allowed}
 .parent .note{font-size:13px;color:var(--muted);margin-top:12px}
 .parent a{color:var(--lime)}
+/* OKKIE. Club-verwijzing bij Darters (1.9.0) */
+.club-cta { display: block; text-decoration: none; color: inherit; margin: 0 0 18px; border: 1px solid rgba(184, 255, 60, .45); }
+.club-cta span { display: block; margin-top: 4px; opacity: .85; }

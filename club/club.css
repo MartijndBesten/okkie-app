@@ -1,0 +1,23 @@
+/* OKKIE. Club: aanvullingen op ../vrienden/vrienden.css */
+.club-code { font: 700 2rem/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; margin: .25rem 0 .75rem; }
+.club-qr { background: #fff; border-radius: 12px; padding: 10px; width: min(220px, 70vw); }
+.club-qr svg { display: block; width: 100%; height: auto; }
+.feed-item { display: flex; justify-content: space-between; gap: .75rem; padding: .6rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+.feed-item:first-child { border-top: 0; }
+.feed-item small { display: block; opacity: .75; }
+.share-row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; padding: .6rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+.share-row .opts { display: flex; gap: .75rem; flex-wrap: wrap; font-size: .9rem; }
+.hidden-note { opacity: .75; }
+#team input { flex: 1; min-width: 0; padding: .7rem .8rem; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: inherit; font: inherit; }
+#team { gap: .5rem; flex-wrap: wrap; }
+.club-head { display: flex; align-items: center; gap: .9rem; }
+.club-logo { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; flex: none; display: block; }
+.logo-edit { display: flex; gap: 1rem; align-items: flex-start; margin-top: .75rem; }
+.logo-edit .club-logo { width: 88px; height: 88px; }
+.file-btn { cursor: pointer; display: inline-block; }
+.ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+#exercise textarea { width: 100%; padding: .7rem .8rem; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: inherit; font: inherit; }
+#exercise .row { display: flex; gap: .75rem; flex-wrap: wrap; }
+.g-head.club-head { justify-content: flex-start; text-align: left; flex-wrap: nowrap; }
+.club-head h2 { margin: 0; }
+.club-head p { margin: .15rem 0 0; }
