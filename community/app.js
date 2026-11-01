@@ -2,6 +2,9 @@
 // Alleen samengevatte cijfers gaan online. Inlog- en herstelcodes blijven op dit toestel.
 import { DARTERS_OPEN } from './config.js';
 import { apiAvailable, getAccount, upsertAccount, dropAccount, publicSnapshots, syncAccount, request } from '../js/community-sync.js';
+import { prepare, publicUrl, isNative } from '../js/native.js';
+
+await prepare();   // iPhone-app: wijzigingen hier gaan ook naar de duurzame kopie (op het web: niets)
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c =>
@@ -21,25 +24,37 @@ let message = '', errorMessage = false;
 const online = () => DARTERS_OPEN && apiAvailable();
 function notify(msg, error = false) { message = msg; errorMessage = error; renderPlayers(); }
 
+// Melden en verbergen (ook nodig voor de App Store, richtlijn 1.2): een naam die je niet wilt zien, verberg je op
+// dit toestel; een ongepaste naam meld je bij Denckh. (beheer haalt het profiel weg, zie cloud/INFRASTRUCTUUR.md).
+const HIDDEN_KEY = 'okkie.darters.verborgen';
+const REPORT_TO = 'info@denckh.nl';
+function hiddenSet() { try { const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]'); return new Set(Array.isArray(v) ? v.filter(h => /^[a-z0-9]{12}$/.test(h)) : []); } catch { return new Set(); } }
+function setHidden(set) { try { set.size ? localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set].slice(-500))) : localStorage.removeItem(HIDDEN_KEY); } catch { /* privémodus */ } }
+const reportLink = (handle, nickname) => 'mailto:' + REPORT_TO + '?subject=' + encodeURIComponent('Melding OKKIE. Darters: ' + handle) +
+  '&body=' + encodeURIComponent('Ik meld dit profiel in OKKIE. Darters:\n\nNaam: ' + nickname + '\nProfielcode: ' + handle + '\n\nWaarom (bijv. ongepaste of beledigende naam):\n');
+
 // ---------- Overzicht (voor iedereen) ----------
 const best = (v, n) => v == null ? '–' : fmt(v / n, 1);
 function renderBoard(result) {
-  const rows = result?.ranking || [];
+  const all = result?.ranking || [], hidden = hiddenSet();
+  const rows = all.map((r, i) => ({ ...r, rank: i + 1 })).filter(r => !hidden.has(r.handle));
+  const hiddenNote = all.length > rows.length ? '<p class="help muted">' + (all.length - rows.length) + ' verborgen op dit toestel. <button type="button" class="link" data-action="unhide-all">Weer tonen</button></p>' : '';
   if (!rows.length) {
+    if (hiddenNote) { $('#rankings').innerHTML = '<div class="empty">Je hebt alle darters in deze lijst verborgen.</div>' + hiddenNote; return; }
     $('#rankings').innerHTML = '<div class="empty">Nog niemand deelt cijfers voor deze periode. Word de eerste!</div>';
     return;
   }
-  $('#rankings').innerHTML = '<ol class="darters" data-testid="darters-list">' + rows.map((r, i) => {
+  $('#rankings').innerHTML = '<ol class="darters" data-testid="darters-list">' + rows.map(r => {
     // Beste trainingen alleen tonen als ze er zijn (30/60/99 pijlen); alles staat ook in het profiel (tik op de naam).
     const bests = [[30, r.best30, 10], [60, r.best60, 20], [99, r.best99, 33]].filter(([, v]) => v != null).map(([n, v, t]) => 'beste ' + n + ' <b>' + best(v, t) + '</b>');
     // 1.7.3: dagen op rij en badges (uit het totaal van de speler); favoriete vak staat in het profiel.
     if (r.streak >= 2) bests.push('🔥 <b>' + fmt(r.streak, 0) + '</b> dagen op rij');
     if (r.badges != null) bests.push('🏅 <b>' + fmt(r.badges, 0) + '</b> badges');
-    return '<li><span class="d-rank">' + (i + 1) + '</span><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' + esc(r.nickname) + '</button>' +
+    return '<li><span class="d-rank">' + r.rank + '</span><button type="button" class="d-name" data-handle="' + esc(r.handle) + '">' + esc(r.nickname) + '</button>' +
       '<span class="d-avg" title="gemiddelde per 3 pijlen"><small>gem.</small> <strong>' + fmt(per3(r.points, r.darts)) + '</strong></span>' +
       '<span class="d-stats"><span><b>' + fmt(r.sessions, 0) + '</b> ' + (r.sessions === 1 ? 'training' : 'trainingen') + '</span><span>hoogste beurt <b>' + fmt(r.highestTurn, 0) + '</b></span>' +
       bests.map(x => '<span>' + x + '</span>').join('') + '</span></li>';
-  }).join('') + '</ol><p class="help muted">Gemiddelde per 3 pijlen, vanaf 30 pijlen in deze periode. Iedereen voert zelf in; geen prijzen.</p>';
+  }).join('') + '</ol><p class="help muted">Gemiddelde per 3 pijlen, vanaf 30 pijlen in deze periode. Iedereen voert zelf in; geen prijzen.</p>' + hiddenNote;
 }
 async function refreshBoard() {
   if (!online()) { $('#rankings').innerHTML = '<div class="empty">Darters is nu niet bereikbaar. Trainen in OKKIE. werkt gewoon.</div>'; return; }
@@ -66,7 +81,9 @@ async function showProfile(handle) {
       '<div><span>Favoriete vak</span><b>' + (t.favorite ? esc(t.favorite) : '–') + '</b></div></div>' +
       (r.trend?.length ? '<p class="note">Laatste weken: ' + r.trend.slice(0, 6).reverse().map(w => esc(w.period.slice(-3)) + ' ' + fmt(per3(w.points, w.darts), 1)).join(' · ') + '</p>' : '')
       : '<p class="muted">Nog geen gedeelde training.</p>') +
-      '<button type="button" class="action secondary" data-action="close-profile">Sluiten</button>';
+      '<div class="d-buttons"><button type="button" class="action secondary" data-action="close-profile">Sluiten</button>' +
+      '<button type="button" class="action secondary" data-action="hide-darter" data-handle-hide="' + esc(handle) + '" data-testid="hide-darter">Verbergen op dit toestel</button></div>' +
+      '<p class="note">Ongepaste naam? <a href="' + esc(reportLink(handle, r.player.nickname)) + '" data-testid="report-darter">Meld dit profiel</a>. We kijken er binnen een paar dagen naar en halen het zo nodig weg.</p>';
     $('#rankings').append(card);
   } catch (e) { notify(e.message, true); }
 }
@@ -129,7 +146,8 @@ function renderPlayers() {
     '<label>Herstelcode<input name="recovery" minlength="64" maxlength="64" required autocomplete="off"></label>' +
     '<button class="action secondary" type="submit">Terugzetten</button></form></details>';
 }
-const parentUrl = token => location.origin + location.pathname + '#ouder=' + token;
+// Moet ook buiten de app werken (de ouder opent hem in de browser): in de iPhone-app het openbare adres.
+const parentUrl = token => (isNative() ? publicUrl('community/') : location.origin + location.pathname) + '#ouder=' + token;
 async function shareParent(acct) {
   const text = `Mag ${acct.nickname} zijn of haar dartscores delen in OKKIE. Darters? Bekijk het en geef toestemming: ${acct.consentLink}`;
   if (navigator.share) { try { await navigator.share({ text }); return; } catch { /* geannuleerd */ } }
@@ -190,6 +208,8 @@ document.addEventListener('click', async e => {
   try {
     button.disabled = true;
     if (act === 'close-profile') document.querySelector('#public-profile')?.remove();
+    else if (act === 'hide-darter') { const set = hiddenSet(); set.add(button.dataset.handleHide); setHidden(set); document.querySelector('#public-profile')?.remove(); refreshBoard(); }
+    else if (act === 'unhide-all') { setHidden(new Set()); refreshBoard(); }
     else if (act === 'cancel') { joining = null; renderPlayers(); }
     else if (act === 'open-recover') { const d = document.getElementById('recover-box'); if (d) { d.open = true; d.scrollIntoView({ block: 'center' }); d.querySelector('input[name=handle]')?.focus(); } }
     else if (act === 'copy-recovery' && acct) { await navigator.clipboard.writeText('OKKIE-profiel: ' + acct.handle + '\nHerstelcode: ' + acct.recovery); notify('Herstelgegevens gekopieerd. Bewaar ze privé.'); }

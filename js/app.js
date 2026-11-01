@@ -21,10 +21,11 @@ import * as M from './motivation.js';
 import * as SC from './share-card.js';
 import * as SV from './stat-prefs.js';
 import { turnChart, bindTurnCharts } from './turn-chart.js';
+import * as N from './native.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.7.5';
+export const APP_VERSION = '1.8.0';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -128,7 +129,8 @@ function overview(playerId = data.activePlayerId) {
 }
 
 function haptic(ms = 12) {
-  if (data.settings.vibrate && navigator.vibrate) try { navigator.vibrate(ms); } catch { /* niet ondersteund */ }
+  if (!data.settings.vibrate || N.haptic(ms)) return;   // iPhone-app: Haptics (navigator.vibrate bestaat op iOS niet)
+  if (navigator.vibrate) try { navigator.vibrate(ms); } catch { /* niet ondersteund */ }
 }
 
 let audioCtx = null;
@@ -305,14 +307,14 @@ VIEWS.welcome = () => `
     <div class="welcome-logo">${logoSVG({ height: 72 })}</div>
     <p class="tagline">${TAGLINE}</p>
     <p class="lead">Jouw eigen darttrainer. Gooi, tik je pijlen in en zie of je beter wordt.</p>
-    ${T.role() === 'new' ? fetchCard() : ''}
+    ${T.role() === 'new' || N.isNative() ? fetchCard() : ''}
     ${T.announce() ? newHereCard() : ''}
     <form class="card" data-form="welcome">
       <label for="wname">Hoe heet je?</label>
-      <input id="wname" name="name" maxlength="24" autocomplete="nickname" placeholder="Je naam" required autofocus>
+      <input id="wname" name="name" maxlength="24" autocomplete="nickname" placeholder="Je naam" required${N.isNative() ? '' : ' autofocus'}>
       <button class="btn primary big" type="submit">Let's play darts</button>
     </form>
-    ${T.role() !== 'new' && I.isStandalone() ? fetchCard() : ''}
+    ${T.role() !== 'new' && !N.isNative() && I.isStandalone() ? fetchCard() : ''}
     <a class="btn ghost welcome-guide" href="./uitleg/">${icon('book', { size: 19 })}Hoe werkt het? Uitleg in 2 minuten</a>
     <p class="fineprint">Alles wordt op dit toestel bewaard. Geen account, geen reclame.</p>
       <p class="maker-line"><a class="maker" href="https://denckh.nl/" target="_blank" rel="noopener" aria-label="Ontwikkeld door Denckh (naar denckh.nl)"><span class="maker-role">Ontwikkeld door</span><img class="on-dark" src="./icons/denckh-logo-signature-light.svg" alt="Denckh" width="92" height="28"><img class="on-light" src="./icons/denckh-logo-signature.svg" alt="Denckh" width="92" height="28"></a></p>
@@ -330,7 +332,7 @@ function newHereCard() {
 // in een geïnstalleerde app onder het naamveld.
 function fetchCard() {
   return `<section class="card move-card" data-testid="fetch-card"><h3>Al eerder OKKIE. gebruikt?</h3>
-      <p class="muted">In Safari of op een andere telefoon? Haal eerst je spelers en trainingen hierheen.</p>
+      <p class="muted">${N.isNative() ? 'In Safari, op je beginscherm of op een andere telefoon? Haal eerst je spelers en trainingen naar deze app. Daar wordt niets gewist.' : 'In Safari of op een andere telefoon? Haal eerst je spelers en trainingen hierheen.'}</p>
       <button class="btn secondary" data-act="transfer-receive">${icon('download', { size: 19 })}Trainingen ophalen</button></section>`;
 }
 
@@ -1137,15 +1139,15 @@ VIEWS.more = () => {
     </nav>
     <section class="card">
       <h3>Back-up en overzetten</h3>
-      <p class="muted">Je gegevens staan alleen op dit toestel. Maak af en toe een back-up, zeker voordat je de browser opschoont.</p>
-      <div class="row-actions"><button class="btn primary" data-act="export">${icon('download', { size: 19 })}Back-up downloaden</button><button class="btn secondary" data-act="backup-share">${icon('share', { size: 19 })}Bewaar via Delen / iCloud</button>
+      <p class="muted">${N.isNative() ? 'Je gegevens staan alleen op deze iPhone (ook in de iCloud-back-up van je iPhone). Bewaar af en toe zelf een back-up in Bestanden of iCloud Drive.' : 'Je gegevens staan alleen op dit toestel. Maak af en toe een back-up, zeker voordat je de browser opschoont.'}</p>
+      <div class="row-actions">${N.isNative() ? '' : `<button class="btn primary" data-act="export">${icon('download', { size: 19 })}Back-up downloaden</button>`}<button class="btn ${N.isNative() ? 'primary' : 'secondary'}" data-act="backup-share">${icon('share', { size: 19 })}${N.isNative() ? 'Back-up bewaren in Bestanden' : 'Bewaar via Delen / iCloud'}</button>
       <label class="btn secondary file">${icon('upload', { size: 19 })}Back-up terugzetten<input type="file" accept="application/json,.json" data-input="import" hidden></label></div>
       <h4>Naar een andere telefoon of app</h4>
-      <p class="muted small">Met een overzetcode zet je alles over via kopiëren en plakken, bijvoorbeeld van Safari naar OKKIE. op je beginscherm. Er komt niets dubbel.</p>
+      <p class="muted small">Met een overzetcode zet je alles over via kopiëren en plakken, bijvoorbeeld van Safari ${N.isNative() ? 'of je beginscherm naar deze app' : 'naar OKKIE. op je beginscherm'}. Er komt niets dubbel.</p>
       <div class="row-actions"><button class="btn secondary" data-act="transfer-code" data-testid="make-code">${icon('copy', { size: 19 })}Overzetcode maken</button><button class="btn secondary" data-act="transfer-receive" data-testid="enter-code">${icon('download', { size: 19 })}Code invoeren</button></div>
       <button class="link-row compact" data-go="andere-app"><span><b>Scores uit een andere app</b><small>Bijv. DartCounter, of zelf een eindstand invullen</small></span>${icon('chevron', { size: 18 })}</button>
     </section>
-    <section class="card" data-testid="install-help">
+    ${N.isNative() ? '' : `<section class="card" data-testid="install-help">
       <h3>Installeren op je telefoon</h3>
       ${standalone ? `<p class="ok-line">${icon('check', { size: 18 })}OKKIE. draait als app op dit toestel.</p>` : `
       ${ui.installEvent ? `<button class="btn primary" data-act="install">${icon('install', { size: 19 })}Installeer OKKIE.</button>` : ''}
@@ -1155,7 +1157,7 @@ VIEWS.more = () => {
       <h4>Installeren op Android</h4>
       <p>Open <b>app.okkiedarts.nl</b> in <b>Chrome</b> en kies via het menu <b>⋮</b> <b>'App installeren'</b> of <b>'Toevoegen aan startscherm'</b>.</p>
       <p class="muted small">Installeren hoeft niet: OKKIE. werkt ook gewoon in de browser. Op iPhone heeft de app op je beginscherm een eigen opslag; zet je bestaande trainingen dan over met een overzetcode (hierboven).</p>`}
-    </section>
+    </section>`}
     <section class="card">
       <h3>Instellingen</h3>
       ${toggle('sound', 'Geluidjes')}${toggle('vibrate', 'Trillen bij tikken')}
@@ -1176,7 +1178,7 @@ VIEWS.more = () => {
 VIEWS.hulp = () => {
   if (!ui.fb.startedAt) ui.fb.startedAt = Date.now();
   return `${header('Hulp & feedback', 'more')}
-  <main class="page">${FB.feedbackPage(ui.fb, FB.techInfo({ version: APP_VERSION, installed: I.isStandalone() }))}</main>`;
+  <main class="page">${FB.feedbackPage(ui.fb, FB.techInfo({ version: APP_VERSION, installed: I.isStandalone() || N.isNative() }))}</main>`;
 };
 
 VIEWS['andere-app'] = () => `${header('Andere app', 'more')}
@@ -1485,8 +1487,16 @@ function stopMatch() {
   });
 }
 
-function exportBackup() {
+async function exportBackup() {
   const blob = new Blob([S.makeBackup(data, { appVersion: APP_VERSION })], { type: 'application/json' });
+  if (N.isNative()) {   // iPhone-app: geen downloadmap; bewaren via het deelmenu (Bewaar in Bestanden)
+    const r = await N.saveFile(`okkie-backup-${new Date().toISOString().slice(0, 10)}.json`, blob, 'OKKIE. back-up').catch(e => toast(e.message, 'error'));
+    if (r !== 'shared') return;
+    Backup.backedUp(data);
+    toast('Back-up bewaard. Kies “Bewaar in Bestanden” en bij voorkeur iCloud Drive.');
+    if (ui.view === 'home' || ui.view === 'more') render();
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `okkie-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -2161,7 +2171,7 @@ const FORMS = {
     f.busy = true; f.error = ''; render();
     try {
       await FB.sendFeedback({ kind: f.kind, message: f.message, contact: f.contact, website: String(fd.get('website') || ''), startedAt: f.startedAt, screenshot: f.screenshot,
-        meta: FB.techInfo({ version: APP_VERSION, installed: I.isStandalone() }) });
+        meta: FB.techInfo({ version: APP_VERSION, installed: I.isStandalone() || N.isNative() }) });
       ui.fb = { kind: f.kind, message: '', contact: '', screenshot: null, busy: false, error: '', sent: f.kind, contactGiven: !!f.contact, startedAt: 0 };
     } catch (e) {
       f.busy = false;
@@ -2184,6 +2194,7 @@ const FORMS = {
 
 function applyTheme() {
   document.documentElement.dataset.theme = data.settings.theme;
+  N.applyTheme(data.settings.theme);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', data.settings.theme === 'light' ? '#f6f1e7' : '#07120d');
 }
 
@@ -2245,6 +2256,7 @@ document.addEventListener('focusout', e => {
 });
 
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); ui.installEvent = e; if (ui.view === 'more') render(); });
+if (window.__okkieInstallEvent) ui.installEvent = window.__okkieInstallEvent;   // al binnen vóór app.js (js/boot.js)
 
 // ---------- Start ----------
 const TAB_ICONS = { home: 'home', train: 'train', match: 'match', stats: 'stats', more: 'more' };
@@ -2264,7 +2276,8 @@ T.receiveViaWindow(async opened => {
 });
 window.addEventListener('appinstalled', () => I.writeState({ installedAt: now() }));
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+// In de iPhone-app staan alle bestanden in de app zelf: geen serviceworker nodig (en niet ondersteund).
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && !N.isNative()) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
     reg.addEventListener('updatefound', () => {

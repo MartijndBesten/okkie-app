@@ -3,6 +3,9 @@
 import { GROUPS_OPEN, MINORS_OPEN } from '../community/config.js';
 import { apiAvailable, getAccount, upsertAccount, dropAccount, syncAccount, request, publicSnapshots } from '../js/community-sync.js';
 import { leaderboards, movement, placesOf, avg3, MIN_DARTS_ALL, MIN_DARTS_WEEK } from '../js/group-stats.js';
+import { prepare, publicUrl, isNative } from '../js/native.js';
+
+await prepare();   // iPhone-app: duurzame kopie (op het web: niets)
 
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -320,7 +323,7 @@ const pendingList = () => (prefs().pendingConsents || []).filter(p => p.playerId
 async function askParent(target, share) {
   const r = await api('/v1/consent/request', 'POST', { ...target, share });
   const p = prefs();
-  const url = new URL('./', location.href).href + '#toestemming=' + r.token;
+  const url = (isNative() ? publicUrl('vrienden/') : new URL('./', location.href).href) + '#toestemming=' + r.token;
   // Eén openstaande link per doel; eerdere, andere aanvragen blijven staan.
   p.pendingConsents = (p.pendingConsents || []).filter(x => !(x.playerId === state.playerId && x.kind === r.kind && x.group === r.group));
   p.pendingConsents.push({ url, group: r.group, kind: r.kind, playerId: state.playerId });
@@ -521,7 +524,7 @@ document.addEventListener('submit', e => {
   });
   if (f.id === 'invite') return busy(btn, async () => {
     const { invite } = await api(`/v1/groups/${state.group.group.id}/invites`, 'POST', { days: +f.elements.days.value, maxUses: +f.elements.uses.value });
-    const url = new URL('./', location.href).href + '#uitnodiging=' + invite.token;
+    const url = (isNative() ? publicUrl('vrienden/') : new URL('./', location.href).href) + '#uitnodiging=' + invite.token;
     const text = `Doe mee met onze dartgroep "${state.group.group.name}" in OKKIE.!`;
     $('#invite-out').innerHTML = `<span class="invite-link" data-testid="invite-link">${esc(url)}</span>
       <div class="row">${navigator.share ? '<button class="btn primary" type="button" data-act="share-invite">Delen…</button>' : ''}

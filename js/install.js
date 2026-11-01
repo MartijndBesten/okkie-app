@@ -13,7 +13,8 @@
 export const INSTALL_ORIGINS = ['https://app.okkiedarts.nl'];
 export const STATE_KEY = 'okkie.install.v1';
 
-const isLocal = loc => /^(localhost|127\.0\.0\.1)$/.test(loc.hostname);
+// Niet in de iPhone-app (capacitor://localhost).
+const isLocal = loc => /^https?:$/.test(loc.protocol || 'http:') && /^(localhost|127\.0\.0\.1)$/.test(loc.hostname);
 // Tests op localhost: localStorage 'okkie.dev' = { install: true }.
 export function originAllowed(loc = location, storage = localStorage) {
   if (INSTALL_ORIGINS.includes(loc.origin)) return true;

@@ -21,7 +21,8 @@ import { trainingTotals, avg3 } from './logic.js';
 export const PROD = { oldOrigin: 'https://martijndbesten.github.io', oldPath: '/dartlog/', newApp: 'https://app.okkiedarts.nl/', open: true, forwarded: true };
 
 // Alleen voor tests op localhost: localStorage 'okkie.dev' = { transfer: { oldOrigin, oldPath, newApp, open } }.
-const isLocal = () => typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+// Niet in de iPhone-app (capacitor://localhost): dat is geen testomgeving.
+const isLocal = () => typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 export function config() {
   if (!isLocal()) return PROD;
   try { return { ...PROD, ...(JSON.parse(localStorage.getItem('okkie.dev') || '{}').transfer || {}) }; } catch { return PROD; }

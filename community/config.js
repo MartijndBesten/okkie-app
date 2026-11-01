@@ -2,7 +2,8 @@
 // api.okkiedarts.nl volgt pas als de Cloudflare-zone okkiedarts.nl actief is; tot dan workers.dev.
 // Alleen voor lokaal testen (localhost/127.0.0.1): localStorage 'okkie.dev' = {"api":"http://127.0.0.1:8799","groups":true,"minors":true}.
 // Lokaal zonder testinstelling staat alles uit (zoals een toestel zonder API); op elk ander adres geldt productie.
-const LOCAL = typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+// http(s) erbij: de iPhone-app draait op capacitor://localhost en is géén testomgeving (IOS-APP.md).
+const LOCAL = typeof location !== 'undefined' && /^https?:$/.test(location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const DEV = LOCAL ? (() => { try { return JSON.parse(localStorage.getItem('okkie.dev') || '{}') || {}; } catch { return {}; } })() : {};
 export const PROD_API = 'https://okkie-api.zaalverhuur-sion.workers.dev';
 export const API_BASE = LOCAL ? (DEV.api || '') : PROD_API;
