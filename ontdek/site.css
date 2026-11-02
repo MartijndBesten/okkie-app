@@ -132,3 +132,10 @@ html:not(.js) .js-only{display:none}
 @media(max-width:800px){.split{grid-template-columns:1fr;gap:34px}.split.flip>.badge-card{order:0}}
 @media(max-width:420px){.chart-card,.badge-card{padding:18px 14px}.cc-bars{--ch:150px;gap:4px}.voice-bubbles li{font-size:15px;padding:12px 15px}}
 @media (prefers-reduced-motion:reduce){.js .chart-card .cc-bars i,.js .badge-card .badge-grid li{transform:none!important;opacity:1!important}}
+
+/* 1.10.0: App Store-badge (alleen na goedkeuring) en het blok Vandaag oefenen */
+.appstore-badge { display: inline-block; margin: 14px 0 4px; line-height: 0; border-radius: 10px; transition: transform .15s ease; }
+.appstore-badge:hover, .appstore-badge:focus-visible { transform: translateY(-2px); }
+.appstore-badge img { height: 50px; width: auto; }
+.coach-split { margin-top: 28px; }
+@media (prefers-reduced-motion: reduce) { .appstore-badge { transition: none; } }

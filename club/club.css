@@ -21,3 +21,4 @@
 .g-head.club-head { justify-content: flex-start; text-align: left; flex-wrap: nowrap; }
 .club-head h2 { margin: 0; }
 .club-head p { margin: .15rem 0 0; }
+.club-record { margin: .4rem 0 .8rem; font-size: .95rem; } .club-record b { color: #ffc53d; }

@@ -398,3 +398,35 @@ export function longestStreak(dates) {
   }
   return best;
 }
+
+// ---------- Beurttotaal in een wedstrijd (1.10.0) ----------
+// Wie in een X01-wedstrijd alleen het beurttotaal invoert, krijgt een beurt met 'X<punten>'-pijlen (punten zonder bekend vak;
+// bestond al voor oude Dartlog-gegevens) en, bij uitgooien met dubbel uit, als laatste pijl een dubbel uit de uitgooiroute.
+// De beurt krijgt total: true en telt daardoor niet mee voor de trefferkaart, badges per vak of de dubbelstatistiek.
+// Oudere OKKIE.-versies lezen zo'n wedstrijd gewoon: de stand en het gemiddelde kloppen.
+const IMPOSSIBLE_TOTALS = new Set([163, 166, 169, 172, 173, 175, 176, 178, 179]);
+export function validTurnTotal(v) {
+  return Number.isInteger(v) && v >= 0 && v <= 180 && !IMPOSSIBLE_TOTALS.has(v);
+}
+// Verdeel punten over n pijlen van hoogstens 60, de grootste eerst (fromEnd: de grootste achteraan).
+function splitX(total, n, fromEnd = false) {
+  const out = [];
+  let left = total;
+  for (let i = 0; i < n; i++) { const p = Math.min(60, left); out.push('X' + p); left -= p; }
+  if (left !== 0) return null;
+  return fromEnd ? out.reverse() : out;
+}
+// total: getypte beurtscore; rest: stand vóór de beurt. finishDarts 1-3: uitgegooid in zoveel pijlen (alleen als total === rest).
+// Zonder finishDarts: een gewone beurt van 3 pijlen (ook een bust, of bij dubbel uit 'precies 0 zonder dubbel').
+export function totalToDarts(total, rest, { doubleOut = true, finishDarts = 0 } = {}) {
+  if (!validTurnTotal(total)) return null;
+  if (!finishDarts) return splitX(total, 3);
+  if (total !== rest || finishDarts < 1 || finishDarts > 3) return null;
+  if (!doubleOut) return checkout(total, finishDarts, false) ? splitX(total, finishDarts, true) : null;
+  const route = checkout(total, finishDarts, true);
+  if (!route) return null;
+  const last = route[route.length - 1];
+  if (finishDarts === 1) return [last];
+  const lead = splitX(total - points(last), finishDarts - 1, true);
+  return lead ? [...lead, last] : null;
+}

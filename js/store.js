@@ -1,5 +1,6 @@
 // OKKIE — gegevensformaat, migraties en back-ups. Geen DOM; opslag wordt meegegeven zodat tests kunnen draaien.
 import { isValidCode, parseInput } from './logic.js';
+import { validDrill } from './drills.js';
 
 // Sleutel heet nog 'oche.data' (de eerste merknaam): niet wijzigen, anders verdwijnen bestaande trainingen.
 export const STORAGE_KEY = 'oche.data';
@@ -120,6 +121,8 @@ export function validateData(d) {
   d.trainings.forEach((t, i) => {
     if (!t || typeof t.id !== 'string' || !ids.has(t.playerId) || !ISO(t.startedAt) || !['score', 'clock'].includes(t.kind) || !validTurns(t.turns, false) || (t.summary !== undefined && !validSummary(t.summary))) errors.push(`Training ${i + 1} is ongeldig.`);
   });
+  if (d.drills !== undefined && !Array.isArray(d.drills)) errors.push('Oefeningen zijn ongeldig.');
+  else (d.drills || []).forEach((x, i) => { if (!validDrill(x, ids)) errors.push(`Oefening ${i + 1} is ongeldig.`); });
   d.matches.forEach((m, i) => {
     const ok = m && typeof m.id === 'string' && ISO(m.startedAt) && Array.isArray(m.players) && m.players.length >= 1 && m.players.length <= 4
       && m.settings && [301, 501, 701].includes(m.settings.start) && [1, 3, 5, 7, 9].includes(m.settings.bestOf)
@@ -139,6 +142,9 @@ export function parseBackup(text) {
   if (errors.length) return { error: 'Back-up afgekeurd: ' + errors.join(' ') };
   const data = { ...emptyData(), ...raw, settings: { ...emptyData().settings, ...(raw.settings || {}) } };
   data.active = { training: null, match: null, ...(raw.active || {}) };
+  // Gerichte oefeningen (1.10.0, js/drills.js) staan in data.drills; ontbreekt het veld (oudere back-up), dan begint de lijst leeg.
+  // Bewust niet in emptyData: zo blijft het formaat van een nieuwe installatie gelijk aan dat van oudere versies.
+  if (data.drills !== undefined && !data.drills.length) delete data.drills;
   // Spelerskleur komt in een style-attribuut terecht: alleen een echte kleurcode toestaan (een vervalste
   // back-up of overzetcode kan anders CSS meegeven).
   data.players = data.players.map((p, i) => (typeof p.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(p.color) ? p : { ...p, color: PLAYER_COLORS[i % PLAYER_COLORS.length] }));
@@ -159,6 +165,8 @@ export function mergeData(base, incoming) {
   for (const p of incoming.players) if (!has(out.players, p.id)) out.players.push(p);
   for (const t of incoming.trainings) if (!has(out.trainings, t.id)) out.trainings.push(t);
   for (const m of incoming.matches) if (!has(out.matches, m.id)) out.matches.push(m);
+  out.drills = out.drills || [];
+  for (const d of incoming.drills || []) if (!has(out.drills, d.id)) out.drills.push(d);
   if (!out.activePlayerId && out.players.length) out.activePlayerId = out.players[0].id;
   return out;
 }

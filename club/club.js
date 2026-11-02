@@ -3,7 +3,7 @@
 // de weekoefening gaat. Staat standaard uit (CLUB_OPEN in community/config.js en CLUBS_ENABLED op de server).
 import { CLUB_OPEN, API_BASE } from '../community/config.js';
 import { apiAvailable, getAccount, upsertAccount, dropAccount, syncAccount, request } from '../js/community-sync.js';
-import { shareableTrainings, CLUB_KIND_LABELS, clubAverage } from '../js/club-share.js';
+import { shareableTrainings, CLUB_KIND_LABELS, CLUB_KIND_HELP, clubValue, clubAverage } from '../js/club-share.js';
 import { prepare, publicUrl, isNative } from '../js/native.js';
 import qrcode from '../js/vendor/qrcode.mjs';
 
@@ -110,7 +110,7 @@ function exValue(e, r) {
 // Echte trainingen op deze telefoon die bij een score- of klokoefening passen.
 function matchingTrainings(e) {
   const list = shareableTrainings(localData(), state.playerId, 60).filter(({ t }) => t.finishedAt.slice(0, 10) >= e.startsOn && t.finishedAt.slice(0, 10) <= e.endsOn);
-  return list.filter(({ c }) => e.kind === 'clock' ? c.kind === 'clock' : c.kind !== 'clock' && c.darts === e.darts);
+  return list.filter(({ c }) => e.kind === 'clock' ? c.kind === 'clock' : c.kind !== 'clock' && c.kind !== 'bobs27' && c.kind !== 'c121' && c.darts === e.darts);
 }
 async function exercisesHtml() {
   const id = state.club.id;
@@ -228,9 +228,11 @@ function weekHtml(view) {
   if (!c) return '<p class="help">Er is deze week nog geen weekoefening gekozen.</p>';
   const hidden = hiddenFor(state.club.id);
   const rows = (view.ranking || []).filter(r => !hidden.has(r.handle));
-  const value = r => c.kind === 'clock' ? `${r.darts} pijlen` : fmt(r.average);
+  const value = r => clubValue(c.kind, r);
+  const rec = view.record;
   return `<h3>${esc(CLUB_KIND_LABELS[c.kind])}</h3><p class="help">${c.open ? `Gooi hem wanneer het jou uitkomt; de ranglijst sluit ${esc(closeText(c.closesAt))}.` : 'Deze ranglijst is gesloten.'}
-    ${c.kind === 'clock' ? 'Minder pijlen is beter.' : 'Gemiddelde per 3 pijlen; je beste poging telt.'}</p>
+    ${esc(CLUB_KIND_HELP[c.kind] || 'Gemiddelde per 3 pijlen; je beste poging telt.')}${c.kind === 'bobs27' || c.kind === 'c121' ? ' Je resultaat komt uit de oefening in OKKIE.: speel hem en deel hem hieronder.' : ''}</p>
+    ${rec ? `<p class="club-record" data-testid="club-record">Clubrecord ${esc(CLUB_KIND_LABELS[c.kind])}: <b>${esc(clubValue(c.kind, { darts: rec.value, points: rec.value }))}</b> · ${esc(rec.nickname)}</p>` : ''}
     ${rows.length ? `<ol class="board">${rows.map(r => boardRow(r, value(r))).join('')}</ol>` : '<p class="help">Nog niemand heeft deze oefening gegooid.</p>'}
     ${hiddenNote(view.ranking || [])}`;
 }
@@ -257,7 +259,7 @@ async function tabBody() {
     const items = r.feed.filter(f => !hidden.has(f.handle));
     return `<section class="card"><h3>Clubfeed</h3><p class="help">Alleen trainingen die leden zelf delen, van de laatste 14 dagen. Alleen zichtbaar voor leden van deze club.</p>
       ${items.length ? items.map(f => `<div class="feed-item"><span><b>${esc(f.nickname)}${f.you ? ' (jij)' : ''}</b><small>${esc(CLUB_KIND_LABELS[f.kind] || f.kind)} · ${esc(f.at.slice(0, 10))}</small></span>
-        <span>${f.kind === 'clock' ? `${f.darts} pijlen` : fmt(f.average)}${f.you || me.role === 'admin' ? ` <button class="btn outline" type="button" data-unfeed="${esc(f.id)}" aria-label="Bericht verwijderen">✕</button>` : ''}</span></div>`).join('') : '<p class="help">Nog geen gedeelde trainingen.</p>'}
+        <span>${esc(clubValue(f.kind, f))}${f.you || me.role === 'admin' ? ` <button class="btn outline" type="button" data-unfeed="${esc(f.id)}" aria-label="Bericht verwijderen">✕</button>` : ''}</span></div>`).join('') : '<p class="help">Nog geen gedeelde trainingen.</p>'}
       ${hiddenNote(r.feed)}</section>`;
   }
   if (state.tab === 'team') {
@@ -294,10 +296,10 @@ function shareHtml() {
   const list = shareableTrainings(localData(), state.playerId, 7);
   const c = state.club.thisWeek.challenge;
   if (!list.length) return '<section class="card"><h3>Training delen</h3><p class="help">Je hebt de afgelopen 7 dagen geen afgeronde training op deze telefoon.</p></section>';
-  return `<section class="card"><h3>Training delen</h3><p class="help">Kies per training wat je met de club deelt. Alleen soort, punten, aantal pijlen en hoogste beurt gaan mee; nooit losse pijlen.</p>
+  return `<section class="card"><h3>Training delen</h3><p class="help">Kies per training wat je met de club deelt. Alleen soort, punten (bij Bob's 27 de eindscore, bij 121 het hoogste doel), aantal pijlen en hoogste beurt gaan mee; nooit losse pijlen.</p>
     ${list.slice(0, 10).map(({ t, c: s }) => {
       const fits = c && c.open && c.kind === s.kind;
-      return `<form class="share-row" data-share="${esc(t.id)}"><span><b>${esc(CLUB_KIND_LABELS[s.kind])}</b> <small class="muted">${esc(String(t.finishedAt).slice(0, 10))} · ${s.kind === 'clock' ? `${s.darts} pijlen` : fmt(clubAverage(s.points, s.darts))}</small>
+      return `<form class="share-row" data-share="${esc(t.id)}"><span><b>${esc(CLUB_KIND_LABELS[s.kind])}</b> <small class="muted">${esc(String(t.finishedAt).slice(0, 10))} · ${esc(clubValue(s.kind, s))}</small>
         <span class="opts"><label><input type="checkbox" name="feed"> In de clubfeed</label>${fits ? '<label><input type="checkbox" name="challenge" checked> Weekoefening</label>' : ''}</span></span>
         <button class="btn outline">Delen</button></form>`;
     }).join('')}</section>`;

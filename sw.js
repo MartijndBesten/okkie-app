@@ -1,6 +1,6 @@
 // OKKIE serviceworker: app-bestanden offline beschikbaar. Gebruikersgegevens staan in localStorage
 // en worden hier nooit aangeraakt. Verhoog VERSION bij elke release.
-const VERSION = 'okkie-v1.9.0';
+const VERSION = 'okkie-v1.10.0';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,9 @@ const ASSETS = [
   './js/backup-alert.js',
   './community/config.js',
   './js/logic.js',
+  './js/drills.js',
+  './js/coach.js',
+  './js/drill-views.js',
   './js/store.js',
   './js/board.js',
   './js/chart.js',

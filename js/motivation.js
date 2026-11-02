@@ -1,4 +1,8 @@
-// OKKIE. — Persoonlijke uitdaging: alleen vergeleken met je eigen eerdere trainingen. Geen streaks, geen dagbeloningen.
+// OKKIE. — Persoonlijke uitdaging: alleen vergeleken met je eigen eerdere trainingen.
+// Motivatie in OKKIE. (sinds 1.10.0): het weekdoel (standaard 3 trainingen per week, js/coach.js) is de hoofdmotivatie.
+// Er is geen dagteller op het startscherm, geen dagbeloning en nooit een "reeks verloren"-melding. De bestaande badges voor
+// dagen op rij (achievements.js: 3, 7 en 14 dagen) blijven bestaan als extra die je kunt halen; als een reeks stopt, meldt
+// OKKIE. niets. Dit bestand rekent alleen het doel per training uit.
 // Puur rekenwerk (geen DOM), zodat het los te testen is.
 import { trainingTotals, matchState } from './logic.js';
 

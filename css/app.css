@@ -780,3 +780,46 @@ body::before{ content:"";position:fixed;left:0;right:0;top:0;height:var(--sat);b
 /* OKKIE. Club op het startscherm (1.9.0) */
 .action.club { border-color: rgba(184, 255, 60, .45); }
 .new-tag { font-style: normal; font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--accent, #b8ff3c); color: #07120d; border-radius: 99px; padding: 1px 7px; margin-left: 6px; vertical-align: 2px; }
+
+/* ---------- Gericht oefenen, Vandaag oefenen en weekdoel (1.10.0) ---------- */
+.block-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 22px 4px 8px; font-weight: 800; }
+.drill-card .chips { margin: 10px 0 4px; }
+.drill-rec { margin: 8px 0 12px; font-size: .9rem; color: var(--muted); }
+.drill-rec b { color: var(--gold); }
+.drill-hint { flex: none; margin: 0; text-align: center; color: var(--muted); font-size: .9rem; }
+.hit-buttons { flex: 1 1 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 180px; }
+.hit-btn { border-radius: 18px; background: var(--key); border: 2px solid var(--line-strong); display: grid; place-content: center; gap: 2px; transition: transform .06s, background-color .1s; }
+.hit-btn b { font-size: clamp(2.2rem, 11vw, 3.2rem); font-weight: 900; line-height: 1; color: var(--accent); }
+.hit-btn small { font-size: .8rem; color: var(--muted); font-weight: 700; }
+.hit-btn.zero b { color: var(--muted); }
+.hit-btn:active { transform: scale(.96); background: var(--key-hi); }
+.drill-last, .drill-table { list-style: none; padding: 0; margin: 0; }
+.drill-last { flex: none; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: .8rem; color: var(--muted); }
+.drill-last li { background: var(--surface); border-radius: 10px; padding: 3px 9px; display: flex; gap: 6px; }
+.drill-last b { color: var(--text); }
+.drill-table li { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.drill-table li span:first-child { font-weight: 800; }
+.drill-table.dbl { columns: 2; column-gap: 18px; }
+.drill-table.dbl li { break-inside: avoid; grid-template-columns: 44px 1fr auto; }
+.coach .coach-title { margin: 2px 0 4px; font-size: 1.05rem; }
+.coach-why { margin: 8px 0 4px; }
+.coach-why summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.coach-why ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: .88rem; }
+.coach-why li { margin: 4px 0; }
+.week .week-count { font-weight: 800; color: var(--accent); }
+.week-dots { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0; }
+.week-dots span { display: grid; justify-items: center; gap: 4px; font-size: .7rem; color: var(--muted); }
+.week-dots i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-strong); }
+.week-dots .on i { background: var(--accent); border-color: var(--accent); }
+.week-goal-edit summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+.week-goal-edit .chips { margin-top: 8px; }
+.edit-banner { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--gold) 16%, var(--surface)); border: 1px solid var(--gold); font-size: .88rem; font-weight: 700; }
+.totalpad { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.total-display { flex: none; min-height: 64px; display: grid; place-items: center; border-radius: 16px; background: var(--surface); font-size: 2.4rem; font-weight: 900; }
+.total-display .muted { font-size: 1rem; font-weight: 700; }
+.total-keys { flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: minmax(48px, 1fr); gap: 6px; }
+.key.ok { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.turnlist.pick li { display: block; padding: 0; }
+.turnlist.pick .h-item { width: 100%; display: grid; grid-template-columns: minmax(28px, auto) 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; text-align: left; }
+.note.good { border-left-color: var(--gold); }
+.icon-btn.slot-empty { visibility: hidden; }

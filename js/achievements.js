@@ -49,6 +49,7 @@ export function activityDates(data, playerId) {
   return [
     ...data.trainings.filter(t => t.playerId === playerId && !t.dateUnknown).map(t => t.startedAt),
     ...data.matches.filter(m => m.players.some(p => p.id === playerId)).map(m => m.startedAt),
+    ...(data.drills || []).filter(d => d.playerId === playerId && d.finishedAt).map(d => d.startedAt),   // gerichte oefeningen (1.10.0)
   ].filter(Boolean);
 }
 
@@ -60,7 +61,8 @@ function ownTurns(data, playerId) {
   for (const m of data.matches) {
     const idx = m.players.findIndex(p => p.id === playerId);
     if (idx < 0) continue;
-    for (const leg of m.legs || []) for (const turn of leg.turns || []) if (turn.p === idx) out.push(turn.darts);
+    // Beurttotaal (total: true): de vakken zijn onbekend, dus niet meetellen voor badges per vak.
+    for (const leg of m.legs || []) for (const turn of leg.turns || []) if (turn.p === idx && !turn.total) out.push(turn.darts);
   }
   return out;
 }

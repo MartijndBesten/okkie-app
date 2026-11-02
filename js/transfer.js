@@ -13,6 +13,7 @@
 // het aantal trainingen, pijlen, punten en het gemiddelde.
 import { parseBackup, mergeData } from './store.js';
 import { trainingTotals, avg3 } from './logic.js';
+import { DRILL_NAMES } from './drills.js';
 
 // open: of de verhuizing op het oude adres wordt aangekondigd (VERHUIZING.md, stap 7).
 // forwarded (sinds 1.6.2, besluit eigenaar: het oude adres had één gebruiker): het oude adres stuurt door naar
@@ -40,11 +41,11 @@ export const announce = () => role() === 'old' && config().open === true;
 
 // ---------- Inhoud, telling en vingerafdruk ----------
 export function summary(d) {
-  return { players: d.players.length, trainings: d.trainings.length, matches: d.matches.length, active: !!(d.active?.training || d.active?.match) };
+  return { players: d.players.length, trainings: d.trainings.length, matches: d.matches.length, ...((d.drills || []).length ? { drills: d.drills.length } : {}), active: !!(d.active?.training || d.active?.match || d.active?.drill) };
 }
 export function summaryText(s) {
   const n = (v, one, more) => `${v} ${v === 1 ? one : more}`;
-  return `${n(s.players, 'speler', 'spelers')}, ${n(s.trainings, 'training', 'trainingen')}, ${n(s.matches, 'wedstrijd', 'wedstrijden')}${s.active ? ' en een lopende training' : ''}`;
+  return `${n(s.players, 'speler', 'spelers')}, ${n(s.trainings, 'training', 'trainingen')}, ${n(s.matches, 'wedstrijd', 'wedstrijden')}${s.drills ? ', ' + n(s.drills, 'oefening', 'oefeningen') : ''}${s.active ? ' en een lopende training' : ''}`;
 }
 
 // Vaste volgorde van sleutels, zodat dezelfde inhoud altijd dezelfde tekst oplevert.
@@ -62,8 +63,13 @@ async function sha256(text) {
   return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 // Vingerafdruk van alles wat telt: spelers, trainingen (elke pijl), wedstrijden en de lopende sessies.
+// De gerichte oefeningen (1.10.0) hebben een eigen vingerafdruk (drillsFingerprint): zo blijft een overzetcode uit
+// 1.10.0 leesbaar voor oudere versies, die alleen deze vingerafdruk kennen en data.drills ongemoeid laten.
 export function fingerprint(d) {
   return sha256(canon({ players: byId(d.players), trainings: byId(d.trainings), matches: byId(d.matches), active: d.active || { training: null, match: null } }));
+}
+export function drillsFingerprint(d) {
+  return sha256(canon(byId(d.drills || [])));
 }
 
 // Per speler: trainingen, pijlen, punten en gemiddelde (scoretrainingen).
@@ -116,7 +122,7 @@ export function writeExtras(storage, extras = {}) {
 // terugkomen en is geen "conflict". Daarom onthoudt de app:
 // - removed: { players, trainings, matches } met de ID's die je bewust hebt verwijderd;
 // - playerAliases: { verdwenenId: blijvendId } na het samenvoegen van twee spelers.
-const KINDS = ['players', 'trainings', 'matches'];
+const KINDS = ['players', 'trainings', 'matches', 'drills'];
 const MAX_REMEMBER = 5000;
 export function removedSets(d) {
   const r = d && typeof d.removed === 'object' && d.removed ? d.removed : {};
@@ -141,12 +147,14 @@ function mapRecord(kind, rec, map, removedPlayers = new Set()) {
     return t;
   }
   if (kind === 'matches') return { ...rec, players: rec.players.map(p => ({ ...p, id: p.id && (removedPlayers.has(p.id) ? null : map(p.id)) })) };
+  if (kind === 'drills') return { ...rec, playerId: map(rec.playerId) };
   return rec;
 }
 function mapActive(active, map) {
   const out = { training: null, match: null, ...(active || {}) };
   if (out.training) out.training = { ...out.training, playerId: map(out.training.playerId), players: (out.training.players || [out.training.playerId]).map(map) };
   if (out.match) out.match = { ...out.match, players: out.match.players.map(p => ({ ...p, id: p.id && map(p.id) })) };
+  if (out.drill) out.drill = { ...out.drill, playerId: map(out.drill.playerId) };
   return out;
 }
 
@@ -162,6 +170,7 @@ function prepareIncoming(base, incoming) {
     players: incoming.players.filter(p => !alias[p.id] && !rm.players.has(p.id)),
     trainings: incoming.trainings.filter(t => !rm.trainings.has(t.id) && !rm.players.has(t.playerId)).map(t => mapRecord('trainings', t, map)),
     matches: incoming.matches.filter(m => !rm.matches.has(m.id)).map(m => mapRecord('matches', m, map, rm.players)),
+    drills: (incoming.drills || []).filter(d => !rm.drills.has(d.id) && !rm.players.has(d.playerId)).map(d => mapRecord('drills', d, map)),
     active: mapActive(incoming.active, map),
   };
 }
@@ -180,7 +189,8 @@ export function mergeTransfer(base, incoming) {
   const out = mergeData(base, inc);
   out.active = { training: null, match: null, ...(out.active || {}) };
   let skippedActive = null;
-  const it = inc.active?.training, im = inc.active?.match;
+  const it = inc.active?.training, im = inc.active?.match, idr = inc.active?.drill;
+  if (idr && !out.active.drill && !(out.drills || []).some(d => d.id === idr.id) && out.players.some(p => p.id === idr.playerId)) out.active.drill = structuredClone(idr);
   if (it) {
     const finishedHere = out.trainings.some(t => t.id === it.id || t.groupId === it.id);
     const known = (it.players || [it.playerId]).every(id => out.players.some(p => p.id === id));
@@ -215,11 +225,12 @@ function explained(kind, inc, here, removedPlayers) {
   }
   return null;
 }
-const LABEL = { players: 'speler', trainings: 'training', matches: 'wedstrijd' };
+const LABEL = { players: 'speler', trainings: 'training', matches: 'wedstrijd', drills: 'oefening' };
 function describe(kind, rec) {
   if (kind === 'players') return rec.name;
   const when = rec.startedAt ? new Date(rec.startedAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   if (kind === 'matches') return `${rec.settings?.start || ''} ${rec.players.map(p => p.name).join(' – ')} (${when})`;
+  if (kind === 'drills') return `${DRILL_NAMES[rec.kind] || rec.kind} van ${when}`;
   return `${rec.kind === 'clock' ? 'rond de klok' : rec.limitTurns ? rec.limitTurns * 3 + ' pijlen' : 'vrije training'} van ${when}`;
 }
 
@@ -234,12 +245,12 @@ export function verifyTransfer(incoming, merged) {
   const rm = removedSets(merged);
   const res = { identical: 0, adjusted: [], conflicts: [], missing: [], players: [], active: 'geen' };
   for (const kind of KINDS) {
-    const have = new Map(merged[kind].map(x => [x.id, x]));
-    for (const raw of incoming[kind]) {
+    const have = new Map((merged[kind] || []).map(x => [x.id, x]));
+    for (const raw of incoming[kind] || []) {
       const target = kind === 'players' ? map(raw.id) : raw.id;
       const y = have.get(target);
       if (!y) {
-        const gone = rm[kind].has(raw.id) || (kind === 'trainings' && rm.players.has(raw.playerId)) || (kind === 'players' && target !== raw.id && rm.players.has(target));
+        const gone = rm[kind].has(raw.id) || ((kind === 'trainings' || kind === 'drills') && rm.players.has(raw.playerId)) || (kind === 'players' && target !== raw.id && rm.players.has(target));
         if (gone) res.adjusted.push({ kind, id: raw.id, what: `${LABEL[kind]} ${describe(kind, raw)}`, why: 'hier bewust verwijderd' });
         else res.missing.push({ kind, id: raw.id, what: `${LABEL[kind]} ${describe(kind, raw)}` });
         continue;
@@ -293,6 +304,8 @@ export function mergePlayers(d, keepId, dropId, accounts = {}) {
   const map = id => (id === dropId ? keepId : id);
   out.trainings.forEach(t => { t.playerId = map(t.playerId); if (t.groupPlayers) t.groupPlayers = t.groupPlayers.map(map); });
   out.matches.forEach(m => m.players.forEach(p => { if (p.id === dropId) { p.id = keepId; p.name = keep.name; } }));
+  (out.drills || []).forEach(x => { x.playerId = map(x.playerId); });
+  if (out.active?.drill) out.active.drill.playerId = map(out.active.drill.playerId);
   const at = out.active?.training;
   if (at) { at.players = (at.players || [at.playerId]).map(map); at.playerId = map(at.playerId); }
   out.active?.match?.players.forEach(p => { if (p.id === dropId) { p.id = keepId; p.name = keep.name; } });
@@ -322,7 +335,7 @@ async function gzip(bytes, mode) {
 }
 export async function makePackage(data, extras = {}, { secrets = true } = {}) {
   const omitted = secrets ? [] : SECRET_KEYS.filter(k => extras[k]);
-  return { app: 'okkie', kind: 'overzetten', v: 1, exportedAt: new Date().toISOString(), data, extras: secrets ? extras : withoutSecrets(extras), omitted, fingerprint: await fingerprint(data) };
+  return { app: 'okkie', kind: 'overzetten', v: 1, exportedAt: new Date().toISOString(), data, extras: secrets ? extras : withoutSecrets(extras), omitted, fingerprint: await fingerprint(data), drillsFingerprint: await drillsFingerprint(data) };
 }
 // Controleert vorm (zelfde regels als een back-up) én vingerafdruk: een afgebroken of veranderde code wordt geweigerd.
 export async function openPackage(pkg) {
@@ -330,6 +343,7 @@ export async function openPackage(pkg) {
   const r = parseBackup(JSON.stringify({ app: 'okkie', data: pkg.data }));
   if (r.error) return r;
   if (pkg.fingerprint && pkg.fingerprint !== await fingerprint(pkg.data)) return { error: 'De gegevens zijn onderweg veranderd of onvolledig. Maak een nieuwe code in de oude app.' };
+  if (pkg.drillsFingerprint && pkg.drillsFingerprint !== await drillsFingerprint(pkg.data)) return { error: 'De gegevens zijn onderweg veranderd of onvolledig. Maak een nieuwe code in de oude app.' };
   return { data: r.data, extras: pkg.extras || {}, omitted: Array.isArray(pkg.omitted) ? pkg.omitted : [], fingerprint: pkg.fingerprint || null };
 }
 // Overzetcode: standaard zonder online profielsleutels (secrets: false).

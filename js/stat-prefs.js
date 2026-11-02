@@ -18,6 +18,7 @@ export const STAT_OPTIONS = [
   { key: 'heatmap', label: 'Trefferkaart', scopes: ['many'] },
   { key: 'badges', label: 'Badges', scopes: ['many'] },
   { key: 'matches', label: 'Wedstrijden', scopes: ['many'] },
+  { key: 'drills', label: 'Gerichte oefeningen', hint: { many: 'record en trend per week' }, scopes: ['many'] },
 ];
 
 export const SCOPES = {
@@ -28,7 +29,7 @@ export const SCOPES = {
 // Standaard alleen het belangrijkste.
 export const DEFAULTS = {
   one: ['avg', 'high', 'turns', 'tons', 'prev', 'records'],
-  many: ['avg', 'high', 'bestWorst', 'tons', 'prev', 'trend', 'records', 'heatmap', 'badges', 'matches'],
+  many: ['avg', 'high', 'bestWorst', 'tons', 'prev', 'trend', 'drills', 'records', 'heatmap', 'badges', 'matches'],
 };
 
 export const optionsFor = scope => STAT_OPTIONS.filter(o => o.scopes.includes(scope));
