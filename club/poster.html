@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07120d">
+  <!-- Clubposter met QR-code: geen zoekmachines. Code en clubnaam staan achter # en gaan naar geen enkele server. -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>Clubposter — OKKIE. Club</title>
+  <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./poster.css">
+  <style id="page-size">@page { size: A4 portrait; margin: 0; }</style>
+</head>
+<body>
+<div class="controls" data-testid="poster-controls">
+  <a class="back" href="./">← Terug naar de club</a>
+  <h1>Clubposter</h1>
+  <p>Print hem en hang hem bij het dartbord. Kies het formaat en druk op afdrukken; op een telefoon of computer kun je hem daar ook als pdf bewaren.</p>
+  <div class="formats" role="radiogroup" aria-label="Formaat">
+    <label><input type="radio" name="format" value="A4" checked> A4 (bij het bord)</label>
+    <label><input type="radio" name="format" value="A5"> A5 (tafel of prikbord)</label>
+  </div>
+  <button type="button" id="print" class="print-btn">Afdrukken of opslaan als pdf</button>
+  <p class="tip">Tip: in de printinstellingen “Ware grootte” of “100 %” kiezen en kopteksten uitzetten.</p>
+</div>
+<main id="sheet" class="sheet a4" aria-label="Clubposter">
+  <p class="empty">Open deze pagina vanuit OKKIE. Club → Beheer → Poster afdrukken.</p>
+</main>
+<script type="module" src="./poster.js"></script>
+</body>
+</html>

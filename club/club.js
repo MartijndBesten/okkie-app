@@ -1,10 +1,14 @@
-// OKKIE. Club (proef). Besloten clubruimte; alle rechten worden door de server gecontroleerd (cloud/src/clubs.js).
-// Lokale trainingen blijven op dit toestel: per training kiest de speler zelf of de samenvatting naar de clubfeed en/of
-// de weekoefening gaat. Staat standaard uit (CLUB_OPEN in community/config.js en CLUBS_ENABLED op de server).
+// OKKIE. Club. Besloten clubruimte; alle rechten worden door de server gecontroleerd (cloud/src/clubs.js).
+// Club bij het bord: de beheerder hangt een QR-code bij het dartbord; wie scant, kiest of maakt hier zijn speler, doet
+// mee en telt met elke training automatisch mee (js/club-auto.js, altijd uit te zetten). Lokale trainingen blijven op
+// dit toestel; naar de club gaat alleen de samenvatting. Staat uit zonder CLUB_OPEN / CLUBS_ENABLED.
 import { CLUB_OPEN, API_BASE } from '../community/config.js';
 import { apiAvailable, getAccount, upsertAccount, dropAccount, syncAccount, request } from '../js/community-sync.js';
 import { shareableTrainings, CLUB_KIND_LABELS, CLUB_KIND_HELP, clubValue, clubAverage } from '../js/club-share.js';
 import { prepare, publicUrl, isNative } from '../js/native.js';
+import { isStandalone } from '../js/install.js';
+import { setClubAuto, clubAutoFor, dropClubAuto, autoShareClubs } from '../js/club-auto.js';
+import { createStore, newPlayer, cleanName } from '../js/store.js';
 import qrcode from '../js/vendor/qrcode.mjs';
 
 await prepare();   // iPhone-app: duurzame kopie (op het web: niets)
@@ -21,7 +25,15 @@ const ROLE = { admin: 'beheerder', captain: 'captain', member: 'lid' };
 const leden = n => `${n} ${n === 1 ? 'lid' : 'leden'}`;
 // "2026-11-08 22:00" → "zondag 8 november, 22:00"
 const closeText = s => { const [d, t] = String(s).split(' '); const x = new Date(d + 'T12:00:00Z'); return Number.isFinite(x.getTime()) ? `${x.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}, ${t}` : s; };
-const CONSENT_TEXT = 'Ik ben 16 jaar of ouder. Alleen leden van deze club zien mijn bijnaam, mijn gemiddelde van de laatste 4 weken, mijn resultaten bij de weekoefening en de trainingen die ik zelf in de clubfeed zet. Ik kan de club altijd verlaten; dan worden die gegevens gewist.';
+const CONSENT_TEXT = 'Ik ben 16 jaar of ouder. Alleen leden van deze club zien mijn bijnaam, mijn gemiddelde van de laatste 4 weken, mijn resultaten bij de weekoefening en de trainingen die ik met de club deel (alleen wat ik zelf deel: per training, of automatisch als ik dat apart aanzet). Ik kan de club altijd verlaten; dan worden die gegevens gewist.';
+const AUTO_HELP = 'Optioneel, staat standaard uit. Aan: na elke training gaat alleen de samenvatting naar de club (soort training, punten, aantal pijlen, hoogste beurt), ook trainingen die je gooit terwijl je op goedkeuring wacht of offline bent. Nooit losse pijlen, nooit trainingen van vóór het aanzetten. Uitzetten kan altijd in de club.';
+// Starten vanuit de club: soorten die de app via ../#start= kan openen (js/app.js startFromLink).
+const STARTABLE = ['score30', 'score60', 'score99', 'clock', 'bobs27', 'c121'];
+const startLink = (kind, playerId) => `../#start=${encodeURIComponent(STARTABLE.includes(kind) ? kind : 'score30')}&speler=${encodeURIComponent(playerId)}`;
+const startLabel = kind => STARTABLE.includes(kind) ? `Gooi de weekoefening: ${CLUB_KIND_LABELS[kind]}` : 'Start scoretraining (30 pijlen)';
+// Posterpagina (A4/A5) om te printen of als pdf te bewaren. In de iPhone-app opent hij in Safari (printen en pdf).
+const posterUrl = (code, club, direct, label = '') => (isNative() ? publicUrl('club/poster.html') : new URL('./poster.html', location.href).href) +
+  '#' + new URLSearchParams({ code, club, ...(direct ? { direct: '1' } : {}), ...(label ? { label } : {}) }).toString();
 
 function localData() {
   try { const d = JSON.parse(localStorage.getItem('oche.data') || 'null'); return d && Array.isArray(d.players) ? d : null; } catch { return null; }
@@ -29,15 +41,15 @@ function localData() {
 const readJson = (k, f) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? f; } catch { return f; } };
 const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* privémodus */ } };
 
-const data = localData();
+let data = localData();
 const state = { playerId: '', clubs: null, club: null, tab: 'week', code: '' };
 state.playerId = readJson(PREFS, {}).playerId && data?.players.some(p => p.id === readJson(PREFS, {}).playerId) ? readJson(PREFS, {}).playerId
   : (data?.players.find(p => p.id === data.activePlayerId) || data?.players[0])?.id || '';
 const acct = () => getAccount(state.playerId);
 const player = () => data?.players.find(p => p.id === state.playerId);
 // Clubcode uit een QR-code of link: in het #-deel, gaat dus nooit naar een server.
-const fromHash = location.hash.match(/club=([A-Za-z0-9-]{8,10})/)?.[1];
-if (fromHash) { state.code = fromHash.toUpperCase(); history.replaceState(null, '', location.pathname + location.search); }
+const fromHash = location.hash.match(/club=([A-Za-z0-9-]{8,12})/)?.[1];
+if (fromHash) { state.code = fromHash.toUpperCase().replace(/-/g, ''); history.replaceState(null, '', location.pathname + location.search); }
 
 function status(msg = '', error = false) { const el = $('#status'); el.textContent = msg; el.classList.toggle('error', !!error); }
 async function api(path, method = 'GET', payload = null, auth = true) {
@@ -175,28 +187,82 @@ function unavailable(text) { $('#vr').innerHTML = `<section class="card"><h2>OKK
 
 function startView() {
   const mine = state.clubs || [];
+  const noPlayers = !data?.players?.length;
   $('#vr').innerHTML = `${playerPicker()}
     ${mine.length ? `<section class="card"><h2>Mijn clubs</h2><ol class="board">${mine.map(c => `<li><span class="who"><b>${esc(c.name)}</b>
-      <small>${c.status === 'pending' ? 'Aanvraag wacht op goedkeuring van de beheerder' : `${leden(c.members)} · ${ROLE[c.role]}`}</small></span><span></span>
+      <small>${c.status === 'pending' ? 'Wacht op de beheerder' : `${leden(c.members)} · ${ROLE[c.role]}`}</small></span><span></span>
       ${c.status === 'pending' ? `<button class="btn outline" type="button" data-cancel="${esc(c.id)}">Intrekken</button>` : `<button class="btn primary" type="button" data-open="${esc(c.id)}">Openen</button>`}</li>`).join('')}</ol></section>` : ''}
-    <section class="card"><h2>Lid worden van je club</h2>
-      <form id="join"><label class="field">Clubcode<input name="code" required autocomplete="off" autocapitalize="characters" maxlength="10" value="${esc(state.code)}" placeholder="Bijv. K7M2Q9RT"></label>
-        <p id="preview" class="help"></p>
-        <label class="check"><input type="checkbox" name="consent" required><span>${esc(CONSENT_TEXT)}</span></label>
-        <button class="btn primary">Aanvraag versturen</button>
-        <p class="help">De beheerder van de club keurt je aanvraag goed. Tot die tijd zie je niets van de club en ziet de club niets van jou.</p></form></section>
+    <section class="card"><h2>${mine.length ? 'Nog een club?' : 'Speel mee met je club'}</h2>
+      <p class="help">Scan de QR-code bij het dartbord van je club met de camera van je telefoon. Geen QR-code bij de hand? Vul de clubcode in.</p>
+      <form id="code" class="row"><label class="field">Clubcode<input name="code" required autocomplete="off" autocapitalize="characters" maxlength="12" value="${esc(state.code)}" placeholder="Bijv. K7M2Q9RT"></label>
+        <button class="btn primary">Verder</button></form></section>
     <details class="card"${mine.length ? '' : ' open'}><summary><b>Gratis een club oprichten</b></summary>
-      <form id="create"><p class="help">Voor je dartvereniging, team of vaste groep. Jij wordt beheerder: je laat leden toe, kiest de weekoefening en maakt eigen clubtrainingen. Gratis.</p>
-        <label class="field">Naam van de club<input name="name" required maxlength="40"></label>
+      <form id="create"><p class="help">Voor je dartvereniging, kantine, café of team. Jij wordt beheerder: je krijgt een QR-code om bij het bord te hangen, kiest de weekoefening en houdt overzicht over de leden. Gratis.</p>
+        <label class="field">Naam van de club<input name="name" required maxlength="40" placeholder="Bijv. DC De Roos"></label>
+        ${noPlayers ? '<label class="field">Jouw naam of bijnaam<input name="player" required maxlength="24" autocomplete="nickname"></label>' : ''}
         <label class="check"><input type="checkbox" name="consent" required><span>${esc(CONSENT_TEXT)}</span></label>
         <button class="btn primary">Club oprichten</button></form></details>`;
-  if (state.code) previewCode(state.code);
 }
-async function previewCode(code) {
-  const out = $('#preview');
-  if (!out) return;
-  try { const r = await api('/v1/clubs/preview', 'POST', { code }, false); out.textContent = `${r.club.name} · ${leden(r.club.members)}`; }
-  catch (e) { out.textContent = e.status === 404 ? 'Deze clubcode klopt niet.' : ''; }
+// ---------- QR-code gescand: club herkennen → speler kiezen of maken → meedoen → gooien ----------
+async function joinFlow() {
+  let pv;
+  try { pv = await api('/v1/clubs/preview', 'POST', { code: state.code }, false); }
+  catch (e) { if (e.status === 404) return badCode(); throw e; }
+  state.preview = pv;
+  const name = pv.club.name, direct = !!pv.code?.direct, players = data?.players || [];
+  const pick = players.length ? `<div class="who-list" role="radiogroup" aria-label="Wie gooit er?">${players.map(p => `<label class="pick"><input type="radio" name="who" value="${esc(p.id)}"${p.id === state.playerId ? ' checked' : ''}><span>${esc(p.name)}</span></label>`).join('')}
+      <label class="pick"><input type="radio" name="who" value="new"><span>Nieuwe speler</span></label></div>
+      <label class="field" data-newname style="display:none">Naam of bijnaam<input name="name" maxlength="24" autocomplete="nickname"></label>`
+    : '<label class="field">Je naam of bijnaam<input name="name" required maxlength="24" autocomplete="nickname" placeholder="Zoals je club je kent"></label>';
+  // In de browser (niet in de iPhone-app en niet als app op het beginscherm): de opslag van de browser staat los van
+  // de app. Waarschuwen vóór er een tweede, losse speler ontstaat; nooit suggereren dat dat vanzelf samenkomt.
+  const inBrowser = !isNative() && !isStandalone();
+  const appNote = inBrowser ? `<section class="card app-note" data-testid="app-note"><h3>Gebruik je OKKIE. al als app?</h3>
+      <p>Open dan <b>de app</b> op deze telefoon, kies <b>OKKIE. Club</b> en vul daar deze code in: <b class="club-code small-code">${esc(state.code)}</b></p>
+      <p class="help">De browser en de app delen geen spelers of trainingen. Meedoen hier maakt een aparte speler in deze browser; die gaat niet vanzelf over naar de app.${players.length ? '' : ' Nog geen OKKIE.-app? Dan kun je hier gewoon meedoen.'}</p></section>` : '';
+  $('#vr').innerHTML = `${players.length ? '' : appNote}<section class="card join-hero" data-testid="join-hero">
+      <div class="eyebrow">${pv.code?.kind === 'personal' ? 'Je bent uitgenodigd voor' : 'Je speelt mee voor'}</div>
+      <h2 class="join-club">${esc(name)}</h2>
+      <p class="muted small">${leden(pv.club.members)}${pv.code?.label && pv.code.kind === 'board' ? ' · ' + esc(pv.code.label) : ''}</p>
+      <ol class="join-steps"><li>Kies wie er gooit</li><li>Gooi je pijlen en tik je score in</li><li>Deel je score met de club: per training, of automatisch</li></ol>
+      ${direct ? '' : '<p class="help">De beheerder laat nieuwe spelers eerst toe. Tot dan zie je de club nog niet.</p>'}</section>
+    <form id="joinflow" class="card"><h3>${players.length ? 'Wie gooit er?' : 'Hoe heet je?'}</h3>${pick}
+      <label class="check"><input type="checkbox" name="consent" required><span>${esc(CONSENT_TEXT)}</span></label>
+      <label class="check auto-choice"><input type="checkbox" name="auto"><span><b>Ja, mijn trainingen tellen automatisch mee voor ${esc(name)}</b><small>${esc(AUTO_HELP)}</small></span></label>
+      <button class="btn primary big">Meedoen met ${esc(name)}</button>
+      <p class="help">Gratis, zonder reclame en zonder e-mailadres. Je trainingen blijven op je telefoon.</p></form>
+    ${players.length ? appNote : ''}
+    <p class="center"><button class="btn outline" type="button" data-other>Andere code of eigen club</button></p>`;
+}
+function badCode() {
+  $('#vr').innerHTML = `<section class="card" data-testid="bad-code"><h2>Deze clubcode werkt niet (meer)</h2>
+    <p>De club heeft waarschijnlijk een nieuwe QR-code gemaakt, of de persoonlijke uitnodiging is al gebruikt of verlopen. Vraag de beheerder om de nieuwe code.</p>
+    <p class="row"><button class="btn primary" type="button" data-other>Code intypen</button> <a class="btn outline" href="../">Gewoon trainen</a></p></section>`;
+}
+// Na het meedoen: meteen gooien. De knop opent de juiste training in de app voor de gekozen speler.
+async function joinedView(r, auto) {
+  const active = r.status === 'active';
+  let kind = 'score30';
+  if (active && r.club.id) {
+    try { const c = await api('/v1/clubs/' + r.club.id); if (c.thisWeek?.challenge?.open) kind = c.thisWeek.challenge.kind; } catch { /* knop met scoretraining */ }
+  }
+  $('#vr').innerHTML = `<section class="card join-done" data-testid="join-done">
+      <h2>${active ? `Je doet mee met ${esc(r.club.name)}!` : `Je aanmelding staat klaar bij ${esc(r.club.name)}`}</h2>
+      <p>${active ? (auto ? 'Gooi een training: je score telt direct mee voor de club.' : 'Je bent lid. Automatisch meetellen staat uit: na een training kies je in de club zelf wat je deelt. Aanzetten kan bij Weekoefening.')
+        : 'De beheerder laat je zo snel mogelijk toe. ' + (auto ? 'Gooi gerust alvast: omdat je automatisch meetellen hebt aangezet, tellen je trainingen mee zodra je erin zit.' : 'Daarna kun je in de club trainingen delen of automatisch meetellen aanzetten.')}</p>
+      <p><a class="btn primary big" href="${esc(startLink(kind, state.playerId))}" data-testid="start-training">${esc(active ? startLabel(kind) : 'Start scoretraining (30 pijlen)')}</a></p>
+      ${active && r.club.id ? `<p><button class="btn outline" type="button" data-open="${esc(r.club.id)}">Naar de club</button></p>` : `<p><button class="btn outline" type="button" data-home>Mijn clubs</button></p>`}</section>`;
+}
+// Nieuwe speler op deze telefoon, rechtstreeks in de opslag van de app (zelfde formaat en sleutel als js/app.js).
+function addLocalPlayer(name) {
+  const store = createStore(localStorage);
+  const d = store.load().data;
+  let p = d.players.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (!p) { p = newPlayer(name, d.players.length); d.players.push(p); }
+  d.activePlayerId = p.id;
+  if (!store.save(d)) throw new Error('Opslaan op deze telefoon lukt niet. Staat privé surfen aan? Zet het uit en scan opnieuw.');
+  data = d;
+  return p.id;
 }
 // Account voor deze speler: bestaand (Darters of Mijn vrienden) of nieuw, altijd niet-openbaar.
 async function ensureAccount(kind, code) {
@@ -216,6 +282,9 @@ async function markClub() {
 }
 
 async function openClub(id) {
+  if (state.club?.id !== id) state.newInvite = null;
+  // Wat nog niet mee was (offline gegooid, of gegooid terwijl je op goedkeuring wachtte) eerst versturen.
+  if (clubAutoFor(state.playerId, id)?.on) await autoShareClubs(localData(), { send: request, token: pid => getAccount(pid)?.token }).catch(() => []);
   state.club = await api('/v1/clubs/' + id);
   state.club.id = id;
   renderClub();
@@ -225,7 +294,7 @@ function boardRow(r, value, sub = '') {
 }
 function weekHtml(view) {
   const c = view.challenge;
-  if (!c) return '<p class="help">Er is deze week nog geen weekoefening gekozen.</p>';
+  if (!c) return `<p class="help">Er is deze week nog geen weekoefening. ${state.club.club.role === 'admin' ? 'Kies hem bij Beheer → Weekoefening.' : 'De beheerder kiest hem; tot die tijd tellen je trainingen mee in de feed en bij Vorm.'}</p>`;
   const hidden = hiddenFor(state.club.id);
   const rows = (view.ranking || []).filter(r => !hidden.has(r.handle));
   const value = r => clubValue(c.kind, r);
@@ -233,7 +302,7 @@ function weekHtml(view) {
   return `<h3>${esc(CLUB_KIND_LABELS[c.kind])}</h3><p class="help">${c.open ? `Gooi hem wanneer het jou uitkomt; de ranglijst sluit ${esc(closeText(c.closesAt))}.` : 'Deze ranglijst is gesloten.'}
     ${esc(CLUB_KIND_HELP[c.kind] || 'Gemiddelde per 3 pijlen; je beste poging telt.')}${c.kind === 'bobs27' || c.kind === 'c121' ? ' Je resultaat komt uit de oefening in OKKIE.: speel hem en deel hem hieronder.' : ''}</p>
     ${rec ? `<p class="club-record" data-testid="club-record">Clubrecord ${esc(CLUB_KIND_LABELS[c.kind])}: <b>${esc(clubValue(c.kind, { darts: rec.value, points: rec.value }))}</b> · ${esc(rec.nickname)}</p>` : ''}
-    ${rows.length ? `<ol class="board">${rows.map(r => boardRow(r, value(r))).join('')}</ol>` : '<p class="help">Nog niemand heeft deze oefening gegooid.</p>'}
+    ${rows.length ? `<ol class="board">${rows.map(r => boardRow(r, value(r))).join('')}</ol>` : '<p class="help">Nog niemand heeft deze oefening gegooid. Jij als eerste?</p>'}
     ${hiddenNote(view.ranking || [])}`;
 }
 function hiddenNote(list) {
@@ -244,7 +313,7 @@ async function tabBody() {
   const id = state.club.id, me = state.club.club;
   if (state.tab === 'week') {
     const prev = await api(`/v1/clubs/${id}/challenge?week=previous`);
-    return `<section class="card">${weekHtml(state.club.thisWeek)}</section>${prev.challenge ? `<details class="card"><summary><b>Vorige week</b></summary>${weekHtml(prev)}</details>` : ''}${shareHtml()}`;
+    return `${autoHtml()}<section class="card">${weekHtml(state.club.thisWeek)}</section>${prev.challenge ? `<details class="card"><summary><b>Vorige week</b></summary>${weekHtml(prev)}</details>` : ''}${shareHtml()}`;
   }
   if (state.tab === 'form') {
     const r = await api(`/v1/clubs/${id}/form`);
@@ -257,9 +326,9 @@ async function tabBody() {
     const r = await api(`/v1/clubs/${id}/feed`);
     const hidden = hiddenFor(id);
     const items = r.feed.filter(f => !hidden.has(f.handle));
-    return `<section class="card"><h3>Clubfeed</h3><p class="help">Alleen trainingen die leden zelf delen, van de laatste 14 dagen. Alleen zichtbaar voor leden van deze club.</p>
+    return `<section class="card"><h3>Clubfeed</h3><p class="help">Trainingen die leden met de club delen (automatisch of zelf), van de laatste 14 dagen. Alleen zichtbaar voor leden van deze club.</p>
       ${items.length ? items.map(f => `<div class="feed-item"><span><b>${esc(f.nickname)}${f.you ? ' (jij)' : ''}</b><small>${esc(CLUB_KIND_LABELS[f.kind] || f.kind)} · ${esc(f.at.slice(0, 10))}</small></span>
-        <span>${esc(clubValue(f.kind, f))}${f.you || me.role === 'admin' ? ` <button class="btn outline" type="button" data-unfeed="${esc(f.id)}" aria-label="Bericht verwijderen">✕</button>` : ''}</span></div>`).join('') : '<p class="help">Nog geen gedeelde trainingen.</p>'}
+        <span>${esc(clubValue(f.kind, f))}${f.you || me.role === 'admin' ? ` <button class="btn outline" type="button" data-unfeed="${esc(f.id)}" aria-label="Bericht verwijderen">✕</button>` : ''}</span></div>`).join('') : '<p class="help">Nog geen trainingen in de feed. Gooi een training: met automatisch meetellen aan staat hij hier meteen.</p>'}
       ${hiddenNote(r.feed)}</section>`;
   }
   if (state.tab === 'team') {
@@ -292,17 +361,25 @@ async function tabBody() {
   if (state.tab === 'admin') return adminHtml();
   return '';
 }
+// Automatisch meetellen (per speler op deze telefoon) + direct gooien.
+function autoHtml() {
+  const on = !!clubAutoFor(state.playerId, state.club.id)?.on, c = state.club.thisWeek.challenge;
+  const kind = c?.open ? c.kind : 'score30';
+  return `<section class="card auto-card" data-testid="auto-card"><label class="check"><input type="checkbox" id="auto"${on ? ' checked' : ''}>
+      <span><b>Mijn trainingen tellen automatisch mee</b><small>${on ? 'Na elke training gaan je punten naar de weekoefening (als hij past) en de clubfeed. Alleen de samenvatting, nooit losse pijlen.' : 'Staat uit: je deelt alleen trainingen die je hieronder zelf instuurt.'}</small></span></label>
+    <p><a class="btn primary" href="${esc(startLink(kind, state.playerId))}" data-testid="club-start">${esc(startLabel(c?.open ? c.kind : null))}</a></p></section>`;
+}
 function shareHtml() {
   const list = shareableTrainings(localData(), state.playerId, 7);
   const c = state.club.thisWeek.challenge;
-  if (!list.length) return '<section class="card"><h3>Training delen</h3><p class="help">Je hebt de afgelopen 7 dagen geen afgeronde training op deze telefoon.</p></section>';
-  return `<section class="card"><h3>Training delen</h3><p class="help">Kies per training wat je met de club deelt. Alleen soort, punten (bij Bob's 27 de eindscore, bij 121 het hoogste doel), aantal pijlen en hoogste beurt gaan mee; nooit losse pijlen.</p>
+  if (!list.length) return '<section class="card"><h3>Zelf een training insturen</h3><p class="help">Je hebt de afgelopen 7 dagen geen afgeronde training op deze telefoon. Gooi er een; met automatisch meetellen aan telt hij vanzelf mee.</p></section>';
+  return `<details class="card"><summary><b>Zelf een training insturen</b></summary><p class="help">Voor trainingen van vóór je lidmaatschap, of als automatisch meetellen uit staat. Kies per training wat je met de club deelt. Alleen soort, punten (bij Bob's 27 de eindscore, bij 121 het hoogste doel), aantal pijlen en hoogste beurt gaan mee; nooit losse pijlen.</p>
     ${list.slice(0, 10).map(({ t, c: s }) => {
       const fits = c && c.open && c.kind === s.kind;
       return `<form class="share-row" data-share="${esc(t.id)}"><span><b>${esc(CLUB_KIND_LABELS[s.kind])}</b> <small class="muted">${esc(String(t.finishedAt).slice(0, 10))} · ${esc(clubValue(s.kind, s))}</small>
         <span class="opts"><label><input type="checkbox" name="feed"> In de clubfeed</label>${fits ? '<label><input type="checkbox" name="challenge" checked> Weekoefening</label>' : ''}</span></span>
         <button class="btn outline">Delen</button></form>`;
-    }).join('')}</section>`;
+    }).join('')}</details>`;
 }
 function qrSvg(text) {
   const q = qrcode(0, 'M');
@@ -310,30 +387,66 @@ function qrSvg(text) {
   q.make();
   return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: 'QR-code met de clubcode' });
 }
+// ---------- uitnodigen: QR-code bij het bord en persoonlijke uitnodiging ----------
+const inviteLink = code => INVITE_PAGE + '#club=' + code;
+// Oudere server zonder codes-lijst: alleen de hoofdcode (met goedkeuring).
+const allCodes = () => state.club.club.codes || [{ code: state.club.club.inviteCode, kind: 'board', label: '', direct: false, primary: true }];
+const boardCodes = () => allCodes().filter(x => x.kind === 'board');
+const expiry = s => { const d = new Date(String(s).replace(' ', 'T') + 'Z'); return Number.isFinite(d.getTime()) ? d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : ''; };
+function boardCard(k, main) {
+  const name = state.club.club.name;
+  return `<div class="board-code" data-testid="board-code">
+    ${main ? '' : `<h4>${esc(k.label || 'Extra bordcode')}</h4>`}
+    <div class="club-qr">${qrSvg(inviteLink(k.code))}</div><p class="club-code">${esc(k.code)}</p>
+    <label class="check"><input type="checkbox" data-direct="${esc(k.code)}"${k.direct ? ' checked' : ''}><span><b>Nieuwe spelers direct toelaten</b>
+      <small>${k.direct ? 'Aan: wie scant, doet meteen mee. Iedereen die de QR-code ziet, kan lid worden; verwijderen kan altijd bij Leden.' : 'Uit: jij laat elke nieuwe speler eerst toe bij Aanmeldingen. Hun trainingen tellen daarna alsnog mee.'}</small></span></label>
+    <div class="row"><a class="btn primary" href="${esc(posterUrl(k.code, name, k.direct, main ? '' : k.label))}" target="_blank" rel="noopener" data-testid="poster-link">Poster afdrukken (A4/A5)</a>
+      <button class="btn outline" type="button" data-sharelink="${esc(inviteLink(k.code))}" data-sharekind="board">Link delen</button>
+      <button class="btn outline" type="button" data-renew="${esc(k.code)}">Nieuwe code maken</button>
+      ${main ? '' : `<button class="btn danger" type="button" data-delcode="${esc(k.code)}">Verwijderen</button>`}</div></div>`;
+}
+function invitesHtml() {
+  const boards = boardCodes(), main = boards.find(x => x.primary) || boards[0], extra = boards.filter(x => x !== main);
+  const personal = allCodes().filter(x => x.kind === 'personal');
+  const fresh = state.newInvite;
+  const multi = !!state.club.club.codes;   // server met meerdere codes (sinds Club bij het bord)
+  return `<section class="card" data-testid="invite-board"><h3>QR-code bij het bord</h3>
+      <p class="help">Print deze QR-code en hang hem bij het dartbord, in de kantine of het clubhuis. Wie scant, kiest zijn naam en speelt meteen mee voor de club.</p>
+      ${boardCard(main, true)}
+      <p class="help">Nieuwe code maken? Dan werken de oude code en alle geprinte posters direct niet meer. Handig als de code op de verkeerde plek terecht is gekomen.</p>
+      ${multi ? `<details><summary><b>Meer borden of groepen</b> ${extra.length ? `(${extra.length})` : ''}</summary>
+        <p class="help">Een eigen QR-code per bord, ruimte of groep (bijvoorbeeld bovenzaal of jeugd). Iedereen komt in dezelfde club.</p>
+        ${extra.map(k => boardCard(k, false)).join('')}
+        <form id="newboard" class="row"><input name="label" maxlength="30" placeholder="Bijv. Bord 2 of Jeugd" aria-label="Naam van de extra QR-code"><button class="btn outline">Extra QR-code maken</button></form></details>` : ''}</section>
+    ${multi ? `<section class="card" data-testid="invite-personal"><h3>Persoonlijke uitnodiging</h3>
+      <p class="help">Voor één speler, bijvoorbeeld via WhatsApp. De link werkt één keer, is 14 dagen geldig en de speler is meteen lid, zonder goedkeuring.</p>
+      ${fresh ? `<div class="invite-new" data-testid="invite-new"><p><b>Uitnodiging${fresh.label ? ' voor ' + esc(fresh.label) : ''}</b> · geldig tot ${esc(expiry(fresh.expiresAt))}</p>
+        <div class="club-qr">${qrSvg(inviteLink(fresh.code))}</div><p class="club-code small-code">${esc(fresh.code)}</p>
+        <p class="row"><button class="btn primary" type="button" data-sharelink="${esc(inviteLink(fresh.code))}" data-sharekind="personal">Uitnodiging delen</button></p></div>` : ''}
+      <form id="newinvite" class="row"><input name="label" maxlength="30" placeholder="Voor wie? (optioneel)" aria-label="Voor wie is de uitnodiging?"><button class="btn primary">Uitnodiging maken</button></form>
+      ${personal.length ? `<h4>Open uitnodigingen</h4><p class="help">De naam zie alleen jij als beheerder.</p><ol class="board invite-list">${personal.map(k => `<li><span class="who"><b>${esc(k.label || 'Zonder naam')}</b><small>${esc(k.code)} · geldig tot ${esc(expiry(k.expiresAt))}</small></span><span></span>
+        <span><button class="btn outline" type="button" data-sharelink="${esc(inviteLink(k.code))}" data-sharekind="personal">Delen</button> <button class="btn danger" type="button" data-delcode="${esc(k.code)}">Intrekken</button></span></li>`).join('')}</ol>` : ''}</section>` : ''}`;
+}
 async function adminHtml() {
   const id = state.club.id, c = state.club.club;
-  const link = INVITE_PAGE + '#club=' + c.inviteCode;
   const reqs = (await api(`/v1/clubs/${id}/requests`)).requests;
   const next = await api(`/v1/clubs/${id}/challenge?week=next`);
   const kinds = Object.entries(CLUB_KIND_LABELS).filter(([k]) => k !== 'free');
   const logo = await loadLogo(id, c.logo);
-  return `<section class="card"><h3>Clubprofiel</h3>
-      <form id="profile" class="row"><label class="field">Clubnaam<input name="name" required maxlength="40" value="${esc(c.name)}"></label><button class="btn primary">Naam opslaan</button></form>
-      <div class="logo-edit">${logo ? `<img class="club-logo" src="${esc(logo)}" alt="Logo van ${esc(c.name)}">` : defaultLogo(c.name)}
-        <div><label class="btn outline file-btn">Logo kiezen<input type="file" id="logo-file" accept="image/jpeg,image/png" hidden></label>
-        ${logo ? '<button class="btn outline" type="button" data-dellogo>Logo verwijderen</button>' : ''}
-        <p class="help">JPG of PNG, hoogstens 1 MB. OKKIE. maakt het vierkant en klein (256 × 256). Alleen leden van de club zien het logo; zonder logo tonen we de initialen.</p></div></div></section>
-    <section class="card"><h3>Aanvragen (${reqs.length})</h3>${reqs.length ? `<ol class="board">${reqs.map(r => `<li><span class="who"><b>${esc(r.nickname)}</b><small>aangevraagd ${esc(r.requestedAt)}</small></span><span></span>
-      <span><button class="btn primary" type="button" data-approve="${esc(r.handle)}">Toelaten</button> <button class="btn outline" type="button" data-reject="${esc(r.handle)}">Afwijzen</button></span></li>`).join('')}</ol>` : '<p class="help">Geen openstaande aanvragen.</p>'}</section>
-    <section class="card"><h3>Uitnodigen</h3><p class="help">Laat leden deze QR-code scannen of geef ze de code. Een aanvraag moet jij altijd nog goedkeuren.</p>
-      <div class="club-qr">${qrSvg(link)}</div><p class="club-code">${esc(c.inviteCode)}</p>
-      <div class="row"><button class="btn outline" type="button" data-sharelink="${esc(link)}">Link delen</button> <button class="btn outline" type="button" data-newcode>Nieuwe code</button></div>
-      <p class="help">Een nieuwe code maakt de oude direct ongeldig.</p></section>
+  const reqHtml = `<section class="card"><h3>Aanmeldingen (${reqs.length})</h3>${reqs.length ? `<ol class="board">${reqs.map(r => `<li><span class="who"><b>${esc(r.nickname)}</b><small>aangevraagd ${esc(r.requestedAt)}</small></span><span></span>
+      <span><button class="btn primary" type="button" data-approve="${esc(r.handle)}">Toelaten</button> <button class="btn outline" type="button" data-reject="${esc(r.handle)}">Afwijzen</button></span></li>`).join('')}</ol>` : `<p class="help">Geen nieuwe aanmeldingen. ${boardCodes().some(x => !x.direct) ? 'Wie de QR-code bij het bord scant, verschijnt hier.' : 'Je bordcode laat nieuwe spelers direct toe, dus hier komt niemand meer langs.'}</p>`}</section>`;
+  return `${reqs.length ? reqHtml + invitesHtml() : invitesHtml() + reqHtml}
     <section class="card"><h3>Weekoefening</h3>
       <form id="challenge"><label class="field">Deze week<select name="kind">${kinds.map(([k, t]) => `<option value="${k}"${state.club.thisWeek.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn primary">Opslaan</button></form>
       <form id="challenge-next"><label class="field">Volgende week<select name="kind">${kinds.map(([k, t]) => `<option value="${k}"${next.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn outline">Klaarzetten</button></form>
       <p class="help">Als er al resultaten zijn, kan de oefening van deze week niet meer wijzigen. Een verdachte score verwijder je bij de ranglijst van deze week:</p>
       ${(state.club.thisWeek.ranking || []).map(r => `<button class="btn outline" type="button" data-unresult="${esc(r.handle)}">Resultaat ${esc(r.nickname)} verwijderen</button>`).join(' ')}</section>
+    <section class="card"><h3>Clubprofiel</h3>
+      <form id="profile" class="row"><label class="field">Clubnaam<input name="name" required maxlength="40" value="${esc(c.name)}"></label><button class="btn primary">Naam opslaan</button></form>
+      <div class="logo-edit">${logo ? `<img class="club-logo" src="${esc(logo)}" alt="Logo van ${esc(c.name)}">` : defaultLogo(c.name)}
+        <div><label class="btn outline file-btn">Logo kiezen<input type="file" id="logo-file" accept="image/jpeg,image/png" hidden></label>
+        ${logo ? '<button class="btn outline" type="button" data-dellogo>Logo verwijderen</button>' : ''}
+        <p class="help">JPG of PNG, hoogstens 1 MB. OKKIE. maakt het vierkant en klein (256 × 256). Alleen leden van de club zien het logo; zonder logo tonen we de initialen.</p></div></div></section>
     <section class="card"><h3>Teams</h3>${state.club.teams.length ? `<ol class="board">${state.club.teams.map(t => `<li><span class="who"><b>${esc(t.name)}</b><small>captain: ${esc(state.club.members.find(m => m.handle === t.captain)?.nickname || 'nog geen')}</small></span><span></span>
       <span><select data-captain="${esc(t.id)}" aria-label="Captain van ${esc(t.name)}"><option value="">Geen captain</option>${state.club.members.map(m => `<option value="${esc(m.handle)}"${t.captain === m.handle ? ' selected' : ''}>${esc(m.nickname)}</option>`).join('')}</select>
       <button class="btn danger" type="button" data-delteam="${esc(t.id)}">Verwijderen</button></span></li>`).join('')}</ol>` : '<p class="help">Nog geen teams.</p>'}
@@ -354,7 +467,11 @@ async function renderClub() {
 async function home() {
   state.club = null;
   if (!acct()?.token) { state.clubs = []; return startView(); }
-  try { state.clubs = (await api('/v1/clubs')).clubs; }
+  try {
+    state.clubs = (await api('/v1/clubs')).clubs;
+    // Niet meer in de club (verwijderd, afgewezen of club opgeheven): niets meer automatisch versturen.
+    for (const id of Object.keys(readJson('okkie.club.auto', {}).links?.[state.playerId] || {})) if (!state.clubs.some(c => c.id === id)) dropClubAuto(state.playerId, id);
+  }
   catch (e) {
     if (e.status === 401) { dropAccount(state.playerId); state.clubs = []; status('Dit profiel is niet meer geldig op deze telefoon.', true); }
     else throw e;
@@ -369,27 +486,36 @@ document.addEventListener('click', e => {
   const id = state.club?.id, d = b.dataset;
   const after = async (msg, reload = true) => { status(msg); if (reload) await openClub(id); };
   if (d.open) busy(b, () => openClub(d.open));
+  else if (d.other !== undefined) { state.code = ''; status(''); busy(b, home); }
   else if (d.home !== undefined) busy(b, home);
-  else if (d.tab) { state.tab = d.tab; busy(b, renderClub); }
-  else if (d.cancel) busy(b, async () => { await api(`/v1/clubs/${d.cancel}/me`, 'DELETE'); status('Aanvraag ingetrokken.'); await home(); });
+  // Weekoefening en Beheer altijd vers ophalen: in de kantine gooien anderen ondertussen door.
+  else if (d.tab) { state.tab = d.tab; busy(b, ['week', 'admin', 'members'].includes(d.tab) ? () => openClub(id) : renderClub); }
+  else if (d.cancel) busy(b, async () => { await api(`/v1/clubs/${d.cancel}/me`, 'DELETE'); dropClubAuto(state.playerId, d.cancel); status('Aanmelding ingetrokken.'); await home(); });
   else if (d.hide) { const s = hiddenFor(id); s.has(d.hide) ? s.delete(d.hide) : s.add(d.hide); setHidden(id, s); renderClub(); }
   else if (d.unhide !== undefined) { setHidden(id, new Set()); renderClub(); }
   else if (d.unfeed) busy(b, async () => { await api(`/v1/clubs/${id}/feed/${d.unfeed}`, 'DELETE'); await after('Bericht verwijderd.'); });
   else if (d.leave !== undefined) {
     if (!confirm('Club verlaten? Je weekresultaten en berichten in deze club worden gewist. Je trainingen op deze telefoon blijven.')) return;
-    busy(b, async () => { await api(`/v1/clubs/${id}/me`, 'DELETE'); status('Je hebt de club verlaten; je clubgegevens zijn gewist.'); await home(); });
+    busy(b, async () => { await api(`/v1/clubs/${id}/me`, 'DELETE'); dropClubAuto(state.playerId, id); status('Je hebt de club verlaten; je clubgegevens zijn gewist.'); await home(); });
   }
   else if (d.approve || d.reject) busy(b, async () => { await api(`/v1/clubs/${id}/requests/${d.approve || d.reject}`, 'POST', { approve: !!d.approve }); await after(d.approve ? 'Lid toegelaten.' : 'Aanvraag afgewezen.'); });
   else if (d.remove) {
     if (!confirm('Dit lid uit de club verwijderen? Zijn resultaten en berichten in deze club worden gewist.')) return;
     busy(b, async () => { await api(`/v1/clubs/${id}/members/${d.remove}`, 'DELETE'); await after('Lid verwijderd.'); });
   }
-  else if (d.newcode !== undefined) {
-    if (!confirm('Nieuwe code maken? De oude code en QR-code werken dan niet meer.')) return;
-    busy(b, async () => { await api(`/v1/clubs/${id}/code`, 'POST'); await after('Nieuwe code gemaakt.'); });
+  else if (d.renew) {
+    if (!confirm('Nieuwe code maken? De oude code en alle geprinte QR-posters werken dan direct niet meer. Print daarna de nieuwe poster.')) return;
+    // Oudere server zonder codes-routes: de route van 1.10.0 vernieuwt de hoofdcode.
+    busy(b, async () => { await api(state.club.club.codes ? `/v1/clubs/${id}/codes/${d.renew}/renew` : `/v1/clubs/${id}/code`, 'POST'); await after('Nieuwe code gemaakt. De oude werkt niet meer; vervang de poster bij het bord.'); });
+  }
+  else if (d.delcode) {
+    if (!confirm('Deze code ongeldig maken? Wie hem daarna scant of opent, kan er niet meer mee lid worden.')) return;
+    busy(b, async () => { await api(`/v1/clubs/${id}/codes/${d.delcode}`, 'DELETE'); if (state.newInvite?.code === d.delcode) state.newInvite = null; await after('Code ongeldig gemaakt.'); });
   }
   else if (d.sharelink) busy(b, async () => {
-    const text = `Word lid van ${state.club.club.name} in OKKIE. Club: ${d.sharelink}`;
+    const name = state.club.club.name;
+    const text = d.sharekind === 'personal' ? `Je bent uitgenodigd voor ${name} in OKKIE. Club. Deze link werkt één keer: ${d.sharelink}`
+      : `Speel mee voor ${name} in OKKIE.: scan de QR-code bij het bord of open ${d.sharelink}`;
     if (navigator.share) await navigator.share({ text }).catch(() => {}); else { await navigator.clipboard?.writeText(text); status('Link gekopieerd.'); }
   });
   else if (d.unresult) busy(b, async () => { await api(`/v1/clubs/${id}/results/${d.unresult}`, 'DELETE'); await after('Resultaat verwijderd.'); });
@@ -401,7 +527,7 @@ document.addEventListener('click', e => {
   else if (d.delteam) busy(b, async () => { await api(`/v1/clubs/${id}/teams/${d.delteam}`, 'DELETE'); await after('Team verwijderd.'); });
   else if (d.delclub !== undefined) {
     if (!confirm('Club opheffen? Alles van deze club wordt gewist, voor alle leden.')) return;
-    busy(b, async () => { await api(`/v1/clubs/${id}`, 'DELETE'); status('Club opgeheven.'); await home(); });
+    busy(b, async () => { await api(`/v1/clubs/${id}`, 'DELETE'); dropClubAuto(state.playerId, id); status('Club opgeheven.'); await home(); });
   }
 });
 document.addEventListener('change', e => {
@@ -411,30 +537,63 @@ document.addEventListener('change', e => {
     busy(null, async () => { await uploadLogo(id, await squareLogo(t.files[0])); status('Logo opgeslagen.'); await openClub(id); });
     return;
   }
+  if (t.id === 'auto') {
+    setClubAuto(state.playerId, id, { name: state.club.club.name, on: t.checked });
+    status(t.checked ? 'Je trainingen tellen vanaf nu automatisch mee.' : 'Automatisch meetellen staat uit.');
+    renderClub();
+    return;
+  }
+  if (t.dataset.direct) {
+    busy(null, async () => { await api(`/v1/clubs/${id}/codes/${t.dataset.direct}`, 'PATCH', { direct: t.checked }); status(t.checked ? 'Nieuwe spelers doen nu direct mee.' : 'Nieuwe spelers laat je nu eerst toe.'); await openClub(id); });
+    return;
+  }
   if (t.id === 'player') { state.playerId = t.value; writeJson(PREFS, { playerId: t.value }); busy(null, home); }
   else if (t.dataset.role) busy(null, async () => { await api(`/v1/clubs/${id}/members/${t.dataset.role}`, 'PATCH', { role: t.value }); status('Rol gewijzigd.'); await openClub(id); });
   else if (t.dataset.team !== undefined && t.matches('select[data-team]')) busy(null, async () => { await api(`/v1/clubs/${id}/members/${t.dataset.team}`, 'PATCH', { teamId: t.value || null }); status('Team gewijzigd.'); await openClub(id); });
   else if (t.dataset.captain) busy(null, async () => { await api(`/v1/clubs/${id}/teams/${t.dataset.captain}`, 'PATCH', { captain: t.value || null }); status('Captain gewijzigd.'); await openClub(id); });
 });
-document.addEventListener('input', e => { if (e.target.name === 'code' && e.target.value.replace(/[\s-]/g, '').length === 8) previewCode(e.target.value); });
+document.addEventListener('change', e => {
+  // QR-flow: "Nieuwe speler" gekozen → naamveld tonen.
+  // style.display i.p.v. hidden: label.field heeft display:block en zou hidden overschrijven.
+  if (e.target.name === 'who') { const n = $('[data-newname]'); if (n) { const show = e.target.value === 'new'; n.style.display = show ? '' : 'none'; if (show) n.querySelector('input').focus(); } }
+});
 document.addEventListener('submit', e => {
   const f = e.target, btn = f.querySelector('button'), id = state.club?.id;
   e.preventDefault();
-  if (f.id === 'join') busy(btn, async () => {
-    const code = f.elements.code.value;
-    if (!f.elements.consent.checked) throw new Error('Bevestig eerst wat je met de club deelt.');
-    await ensureAccount('clubCode', code);
-    const r = await api('/v1/clubs/join', 'POST', { code, consent: true });
+  if (f.id === 'code') {
+    state.code = f.elements.code.value.trim().toUpperCase().replace(/[\s-]/g, '');
+    busy(btn, joinFlow);
+  }
+  else if (f.id === 'joinflow') busy(btn, async () => {
+    if (!f.elements.consent.checked) throw new Error('Bevestig eerst dat je 16 jaar of ouder bent en wat je met de club deelt.');
+    const who = f.elements.who?.value || 'new';
+    if (who === 'new') {
+      const name = cleanName(f.elements.name.value);
+      if (!name) throw new Error('Vul je naam of bijnaam in.');
+      state.playerId = addLocalPlayer(name);
+    } else state.playerId = who;
+    writeJson(PREFS, { playerId: state.playerId });
+    await ensureAccount('clubCode', state.code);
+    const r = await api('/v1/clubs/join', 'POST', { code: state.code, consent: true });
     await markClub();
-    status(r.status === 'active' ? `Je bent al lid van ${r.club.name}.` : `Aanvraag verstuurd naar ${r.club.name}. De beheerder keurt hem goed.`);
-    await home();
+    const auto = !!f.elements.auto.checked;
+    if (r.club?.id) setClubAuto(state.playerId, r.club.id, { name: r.club.name, on: auto });
+    state.code = '';
+    status(r.already && r.status === 'active' ? `Je was al lid van ${r.club.name}.` : '');
+    await joinedView(r, auto);
   });
   else if (f.id === 'create') busy(btn, async () => {
     if (!f.elements.consent.checked) throw new Error('Bevestig eerst wat je met de club deelt.');
+    if (f.elements.player) {
+      const name = cleanName(f.elements.player.value);
+      if (!name) throw new Error('Vul je naam of bijnaam in.');
+      state.playerId = addLocalPlayer(name);
+      writeJson(PREFS, { playerId: state.playerId });
+    }
     await ensureAccount('clubFounder', true);
     const r = await api('/v1/clubs', 'POST', { name: f.elements.name.value, consent: true });
     await markClub();
-    status(`${r.club.name} is aangemaakt. Jij bent beheerder.`);
+    status(`${r.club.name} is aangemaakt. Jij bent beheerder. Print de QR-code en hang hem bij het bord.`);
     state.tab = 'admin';
     await openClub(r.club.id);
   });
@@ -474,11 +633,29 @@ document.addEventListener('submit', e => {
     const res = await api(`/v1/clubs/${id}/exercises/${f.dataset.ex}/results`, 'POST', body);
     status(res.best ? 'Ingestuurd: dit is je beste resultaat.' : 'Ingestuurd; je eerdere resultaat was beter en blijft staan.'); await renderClub();
   });
+  else if (f.id === 'newinvite') busy(btn, async () => {
+    const r = await api(`/v1/clubs/${id}/codes`, 'POST', { kind: 'personal', label: f.elements.label.value });
+    state.newInvite = r.code;
+    status('Uitnodiging gemaakt. Deel hem met de speler; hij werkt één keer.');
+    await openClub(id);
+  });
+  else if (f.id === 'newboard') busy(btn, async () => {
+    await api(`/v1/clubs/${id}/codes`, 'POST', { kind: 'board', label: f.elements.label.value });
+    status('Extra QR-code gemaakt.'); await openClub(id);
+  });
   else if (f.id === 'team') busy(btn, async () => { await api(`/v1/clubs/${id}/teams`, 'POST', { name: f.elements.name.value }); status('Team toegevoegd.'); await openClub(id); });
 });
 
 // ---------- start ----------
 if (!CLUB_OPEN || !apiAvailable()) unavailable('OKKIE. Club is nog niet beschikbaar. We testen het eerst met een paar dartverenigingen.');
-else if (!data?.players?.length) unavailable('Maak eerst in de app een speler aan en gooi een training. Daarna kun je lid worden van je club.');
+else if (state.code) busy(null, joinFlow);   // QR-code of link: meteen de club tonen, ook zonder speler op deze telefoon
 else busy(null, home);
-void isNative;
+// Nog een QR-code of link geopend terwijl deze pagina al open staat (alleen het #-deel verandert): die club tonen.
+addEventListener('hashchange', () => {
+  const c = location.hash.match(/club=([A-Za-z0-9-]{8,12})/)?.[1];
+  if (!c || !CLUB_OPEN || !apiAvailable()) return;
+  state.code = c.toUpperCase().replace(/-/g, '');
+  history.replaceState(null, '', location.pathname + location.search);
+  status('');
+  busy(null, joinFlow);
+});

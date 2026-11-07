@@ -1,0 +1,51 @@
+/* OKKIE. Club: printbare clubposter (A4/A5). Alle maten in cqw (procent van de posterbreedte), zodat A4 en A5 en het
+   scherm dezelfde opmaak hebben. Wit papier, zwarte QR-code (scant het best), alleen de kopbalk in OKKIE.-groen. */
+:root { --ink: #07120d; --green: #1f6b3a; --lime: #b8ff3c; --paper: #ffffff; }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: #0b1a12; color: #f3eedf; font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; line-height: 1.4; }
+.controls { max-width: 640px; margin: 0 auto; padding: 16px 16px 8px; }
+.controls h1 { font-size: 1.6rem; margin: .4rem 0; }
+.controls p { color: #b9c7bd; margin: .4rem 0; }
+.controls .back { color: var(--lime); font-weight: 800; text-decoration: none; display: inline-block; padding: 8px 0; min-height: 44px; }
+.formats { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.formats label { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid #3d5a47; border-radius: 12px; font-weight: 700; cursor: pointer; }
+.formats input { width: 20px; height: 20px; accent-color: var(--lime); margin: 0; }
+.formats label:has(input:checked) { border-color: var(--lime); }
+.print-btn { width: 100%; border: 0; border-radius: 12px; padding: 16px 20px; background: var(--lime); color: #13200c; font-family: inherit; font-weight: 800; font-size: 16px; line-height: 1.2; cursor: pointer; min-height: 52px; }
+.print-btn:disabled { opacity: .5; cursor: not-allowed; }
+.tip { font-size: .85rem; }
+
+.sheet { container-type: inline-size; background: var(--paper); color: var(--ink); margin: 12px auto 32px; width: min(100% - 32px, 210mm);
+  aspect-ratio: 210 / 297; display: flex; flex-direction: column; overflow: hidden; border-radius: 6px; box-shadow: 0 20px 60px #0008; }
+.sheet.a5 { width: min(100% - 32px, 148mm); }
+.sheet .empty { padding: 8cqw; font-size: 4cqw; }
+.band { background: var(--ink); color: var(--lime); display: flex; align-items: center; justify-content: space-between; padding: 3.6cqw 7cqw; }
+.band .logo { height: 6.4cqw; width: auto; }
+.band span { font-weight: 800; letter-spacing: .35cqw; font-size: 2.6cqw; }
+.body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; text-align: center; padding: 3cqw 8cqw 1cqw; }
+.kicker { margin: 0; text-transform: uppercase; letter-spacing: .5cqw; font-weight: 800; color: var(--green); font-size: 3cqw; }
+.club { margin: .6cqw 0 0; font-size: 8cqw; line-height: 1.05; letter-spacing: -.25cqw; font-weight: 800; overflow-wrap: anywhere; max-width: 100%; }
+.label { margin: 1cqw 0 0; font-weight: 700; font-size: 3.2cqw; color: var(--green); }
+.qr { width: 42cqw; margin: 2.2cqw 0 1.6cqw; padding: 2cqw; border: .6cqw solid var(--ink); border-radius: 3cqw; }
+.qr svg { display: block; width: 100%; height: auto; }
+.scan { margin: 0; font-weight: 800; font-size: 3.4cqw; line-height: 1.2; max-width: 80cqw; }
+.steps { list-style: none; counter-reset: s; padding: 0; margin: 2.4cqw 0 0; text-align: left; width: 100%; max-width: 74cqw; }
+.steps li { counter-increment: s; display: flex; gap: 2.4cqw; align-items: center; margin: .9cqw 0; font-size: 2.9cqw; line-height: 1.25; }
+.steps li::before { content: counter(s); flex: none; width: 5.2cqw; height: 5.2cqw; border-radius: 50%; background: var(--lime); color: var(--ink); font-weight: 800; display: grid; place-items: center; font-size: 3.4cqw; }
+.steps small { display: block; font-size: 2.4cqw; color: #4a5a50; }
+.new { margin: 2cqw 0 0; padding: 1.5cqw 3.5cqw; border: .4cqw dashed var(--green); border-radius: 2.5cqw; font-weight: 800; font-size: 2.9cqw; }
+.new span { display: block; font-weight: 500; font-size: 2.4cqw; color: #4a5a50; }
+.manual { margin: 1.6cqw 0 0; font-size: 2.4cqw; color: #4a5a50; }
+.manual b { color: var(--ink); }
+.code { display: inline-block; margin-top: .5cqw; font: 800 4.2cqw/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .8cqw; color: var(--ink); }
+.foot { text-align: center; font-size: 2.1cqw; color: #4a5a50; padding: 1.4cqw 6cqw 3cqw; }
+
+@media print {
+  html, body { background: var(--paper); }
+  .controls { display: none; }
+  .sheet, .sheet.a5 { margin: 0; width: 210mm; height: 297mm; aspect-ratio: auto; border-radius: 0; box-shadow: none; break-after: avoid; }
+  .sheet.a5 { width: 148mm; height: 210mm; }
+  .band { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .steps li::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

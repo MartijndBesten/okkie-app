@@ -26,10 +26,11 @@ import * as N from './native.js';
 import * as D from './drills.js';
 import { makeDrillViews } from './drill-views.js';
 import * as C from './coach.js';
+import { autoShareClubs } from './club-auto.js';
 
 FB.captureErrors();
 
-export const APP_VERSION = '1.10.0';
+export const APP_VERSION = '1.11.0';
 // "Nodig een vriend uit": altijd de website als link. Die blijft geldig, ook na de verhuizing van de app.
 export const INVITE_URL = 'https://okkiedarts.nl/';
 export const INVITE_TEXT = 'Ik train mijn darts met OKKIE. 🎯 Gratis, werkt gewoon op je telefoon en je ziet meteen of je beter wordt. Doe je mee?';
@@ -401,7 +402,7 @@ VIEWS.home = () => {
         <span class="a-icon">${icon('stats')}</span><span><b>Mijn statistieken</b><small>Word ik beter?</small></span>
       </button>
       ${CLUB_OPEN ? `<a class="action club" href="./club/" aria-label="Open OKKIE. Club" data-testid="club-home">
-        <span class="a-icon">${icon('group')}</span><span><b>OKKIE. Club <em class="new-tag">nieuw</em></b><small>Train samen met je club: weekoefening en clubranglijst</small></span>
+        <span class="a-icon">${icon('group')}</span><span><b>OKKIE. Club <em class="new-tag">nieuw</em></b><small>Scan de QR-code bij het bord en speel mee voor je club</small></span>
       </a>` : ''}
       <a class="action stats" href="./community/" aria-label="Open Darters" data-testid="darters-link">
         <span class="a-icon">${icon('trophy')}</span><span><b>Darters</b><small>Bekijk andere darters en deel zelf je cijfers</small></span>
@@ -1167,7 +1168,7 @@ VIEWS.more = () => {
       ${G.readGuest().queue.length ? `<p class="note" data-testid="guest-queue">${G.readGuest().queue.length === 1 ? '1 resultaat van een gast wacht' : G.readGuest().queue.length + ' resultaten van gasten wachten'} op internet om verstuurd te worden.${G.readGuest().queue.some(q => q.error) ? ' Eén of meer codes werken niet meer; vraag een nieuwe code en koppel opnieuw.' : ''}</p><button class="btn ghost small" data-act="guest-retry">Nu versturen</button>` : ''}
     </section>` : ''}
     <nav class="card link-list" aria-label="Delen en hulp">
-      ${CLUB_OPEN ? `<a class="link-row" href="./club/" data-testid="club-link"><span class="a-icon">${icon('trophy', { size: 20 })}</span><span><b>OKKIE. Club</b><small>Weekoefening en ranglijst, alleen voor je eigen club</small></span>${icon('chevron', { size: 18 })}</a>` : ''}
+      ${CLUB_OPEN ? `<a class="link-row" href="./club/" data-testid="club-link"><span class="a-icon">${icon('trophy', { size: 20 })}</span><span><b>OKKIE. Club</b><small>Speel mee voor je club: je scores tellen mee in de clubranglijst</small></span>${icon('chevron', { size: 18 })}</a>` : ''}
       <button class="link-row" data-act="invite" data-testid="invite-card"><span class="a-icon">${icon('invite', { size: 20 })}</span><span><b>Nodig een vriend uit</b><small>Een link naar okkiedarts.nl; er worden geen scores gedeeld</small></span>${icon('chevron', { size: 18 })}</button>
       <button class="link-row" data-go="hulp"><span class="a-icon">${icon('help', { size: 20 })}</span><span><b>Hulp &amp; feedback</b><small>Meld een probleem of stuur een idee</small></span>${icon('chevron', { size: 18 })}</button>
     </nav>
@@ -1258,6 +1259,27 @@ function startScore() {
   talk(VL.startTalk('score'));
 }
 
+// OKKIE. Club bij het bord: wie dat in de club heeft aangezet, telt met elke afgeronde training automatisch mee
+// (alleen de samenvatting, zie js/club-auto.js). Nooit blokkerend; geen internet = later alsnog.
+function clubAuto() {
+  if (!CLUB_OPEN || !apiAvailable()) return;
+  autoShareClubs(data, { send: request, token: id => getAccount(id)?.token }).then(done => {
+    if (!done.length) return;
+    const names = [...new Set(done.map(x => x.clubName).filter(Boolean))].join(' en ') || 'je club';
+    toast(done.some(x => x.challengeResult?.best) ? `Telt mee voor ${names}: je beste resultaat van de week.` : `Telt mee voor ${names}.`);
+  }).catch(() => {});
+}
+// Vanuit de club ("Gooi de weekoefening"): ./#start=score30&speler=<id>. Start alleen als er niets loopt.
+const START_LINK = { score30: 10, score60: 20, score99: 33 };
+function startFromLink(kind, playerId) {
+  if (data.active.training || data.active.match || data.active.drill || !data.players.length) return false;
+  if (playerId && data.players.some(p => p.id === playerId)) { data.activePlayerId = playerId; save(); }
+  if (START_LINK[kind]) { ui.setup.turns = START_LINK[kind]; ui.setup.players = [data.activePlayerId]; startScore(); return true; }
+  if (kind === 'clock') { startClock(); return true; }
+  if (D.DRILL_KINDS.includes(kind)) { startDrill(kind); return true; }
+  return false;
+}
+
 function startClock() {
   finishActiveTraining(false);
   data.active.training = { id: S.uid(), playerId: data.activePlayerId, players: [data.activePlayerId], kind: 'clock', limitTurns: null, startedAt: now(), turns: [], pending: [] };
@@ -1302,6 +1324,7 @@ function finishDrill(showResult = true) {
   const saved = { ...clean, finishedAt: now() };
   (data.drills ||= []).push(saved);
   save();
+  clubAuto();
   const res = D.drillResult(saved);
   const after = D.drillRecords(data.drills, dr.playerId)[dr.kind]?.value ?? null;
   ui.result = { drillId: saved.id, newRecord: res.value !== null && before !== null && after !== before, first: res.value !== null && before === null, prev: before, record: after };
@@ -1526,6 +1549,7 @@ function finishActiveTraining(showResult = true) {
   save();
   // Synchronisatie alleen na toestemming; netwerkfouten beïnvloeden lokaal darten niet.
   queueCommunitySync(data, saved.map(tr => tr.playerId));
+  clubAuto();
   if (G.queueGuestTrainings(t.id, saved)) sendGuests();
   const per = saved.map(tr => {
     const b = before.get(tr.playerId);
@@ -2578,6 +2602,10 @@ if (at) ui.view = at.kind === 'clock' ? 'play-clock' : 'play-score';
 else if (data.active.match) ui.view = 'play-match';
 else if (data.active.drill) { ui.view = DRILL_VIEW[data.active.drill.kind]; ui.mod = ringMod(data.active.drill.kind); }
 render();
+{
+  const link = new URLSearchParams(location.hash.slice(1));
+  if (link.has('start')) { history.replaceState(null, '', location.pathname + location.search); startFromLink(link.get('start'), link.get('speler')); }
+}
 T.receiveViaWindow(async opened => {
   const report = await applyIncoming(opened);
   goAfterTransfer();
@@ -2610,6 +2638,7 @@ function sendGuests(manual = false) {
 function syncOtherPhones() {
   sendGuests();
   resumePendingSync(data);   // wat bij afsluiten of offline nog niet verstuurd was
+  clubAuto();                // trainingen voor je club die nog niet mee waren (offline, of wachtend op goedkeuring)
   pingUsage({ version: APP_VERSION, send: request }).catch(() => {});   // anonieme dagteller (usage-ping.js)
   G.pullInbox(data, save).then(n => {
     if (n) { toast(n === 1 ? 'Een resultaat van een andere telefoon is toegevoegd.' : `${n} resultaten van andere telefoons zijn toegevoegd.`); if (!PLAY_VIEWS.has(ui.view)) render(); }

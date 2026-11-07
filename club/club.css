@@ -22,3 +22,33 @@
 .club-head h2 { margin: 0; }
 .club-head p { margin: .15rem 0 0; }
 .club-record { margin: .4rem 0 .8rem; font-size: .95rem; } .club-record b { color: #ffc53d; }
+/* Club bij het bord: QR-flow (scannen → speler kiezen → meedoen → gooien) */
+.join-hero { text-align: center; }
+.join-hero .eyebrow { margin-bottom: .25rem; }
+.join-club { margin: .35rem 0 .1rem; color: var(--lime, #b8ff3c); overflow-wrap: anywhere; }
+.join-steps { text-align: left; max-width: 22rem; margin: 1rem auto .5rem; padding-left: 1.4rem; }
+.join-steps li { margin: .35rem 0; font-weight: 700; }
+.who-list { display: grid; gap: .5rem; margin: .5rem 0 .75rem; }
+.pick { display: flex; align-items: center; gap: .75rem; padding: .85rem 1rem; border: 1px solid var(--line, rgba(255,255,255,.18)); border-radius: 12px; cursor: pointer; font-weight: 700; }
+.pick input { width: 22px; height: 22px; margin: 0; accent-color: var(--lime, #b8ff3c); }
+.pick:has(input:checked) { border-color: var(--lime, #b8ff3c); }
+.btn.big { width: 100%; padding: 18px 22px; font-size: 16px; }
+.join-done { text-align: center; }
+.center { text-align: center; }
+.auto-card .check { margin-top: 0; }
+/* Beheer: QR-code bij het bord en persoonlijke uitnodigingen */
+.board-code { padding: .75rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+.board-code:first-of-type { border-top: 0; }
+.board-code h4, .card h4 { margin: .5rem 0; }
+.board-code .row, .invite-new .row { margin-top: .5rem; }
+.invite-new { border: 1px dashed var(--lime, #b8ff3c); border-radius: 12px; padding: .75rem; margin: .5rem 0 1rem; }
+.club-code.small-code { font-size: 1.4rem; }
+#newinvite input, #newboard input { flex: 1; min-width: 0; padding: .7rem .8rem; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: inherit; font: inherit; font-size: 16px; }
+#code .field { flex: 1; min-width: 12rem; margin: 0; }
+#code { align-items: flex-end; }
+.board.invite-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.board.invite-list li > span:empty { display: none; }
+.board.invite-list .who { flex: 1 1 10rem; }
+#newinvite input, #newboard input { flex-basis: 100%; }
+.app-note { border-color: #3d5a47; }
+.app-note .club-code { display: inline-block; margin: .25rem 0; letter-spacing: .12em; }
