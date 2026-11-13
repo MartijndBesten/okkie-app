@@ -25,12 +25,20 @@ const ROLE = { admin: 'beheerder', captain: 'captain', member: 'lid' };
 const leden = n => `${n} ${n === 1 ? 'lid' : 'leden'}`;
 // "2026-11-08 22:00" → "zondag 8 november, 22:00"
 const closeText = s => { const [d, t] = String(s).split(' '); const x = new Date(d + 'T12:00:00Z'); return Number.isFinite(x.getTime()) ? `${x.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}, ${t}` : s; };
-const CONSENT_TEXT = 'Ik ben 16 jaar of ouder. Alleen leden van deze club zien mijn bijnaam, mijn gemiddelde van de laatste 4 weken, mijn resultaten bij de weekoefening en de trainingen die ik met de club deel (alleen wat ik zelf deel: per training, of automatisch als ik dat apart aanzet). Ik kan de club altijd verlaten; dan worden die gegevens gewist.';
+const CONSENT_TEXT = 'Ik ben 16 jaar of ouder. Alleen leden van deze club zien mijn bijnaam, mijn gemiddelde van de laatste 4 weken, mijn resultaten bij clubtrainingen en de weekoefening en de trainingen die ik met de club deel (alleen wat ik zelf deel: per training, of automatisch als ik dat apart aanzet). Ik kan de club altijd verlaten; dan worden die gegevens gewist.';
 const AUTO_HELP = 'Optioneel, staat standaard uit. Aan: na elke training gaat alleen de samenvatting naar de club (soort training, punten, aantal pijlen, hoogste beurt), ook trainingen die je gooit terwijl je op goedkeuring wacht of offline bent. Nooit losse pijlen, nooit trainingen van vóór het aanzetten. Uitzetten kan altijd in de club.';
 // Starten vanuit de club: soorten die de app via ../#start= kan openen (js/app.js startFromLink).
 const STARTABLE = ['score30', 'score60', 'score99', 'clock', 'bobs27', 'c121'];
-const startLink = (kind, playerId) => `../#start=${encodeURIComponent(STARTABLE.includes(kind) ? kind : 'score30')}&speler=${encodeURIComponent(playerId)}`;
+const startLink = (kind, playerId) => `../#start=${encodeURIComponent(STARTABLE.includes(kind) || /^pijlen\d+$/.test(kind) ? kind : 'score30')}&speler=${encodeURIComponent(playerId)}`;
 const startLabel = kind => STARTABLE.includes(kind) ? `Gooi de weekoefening: ${CLUB_KIND_LABELS[kind]}` : 'Start scoretraining (30 pijlen)';
+// Welke training start de knop? Eerst een open clubtraining van de club zelf (scoretraining of rond de klok), anders de
+// weekoefening als de club die heeft ingesteld, anders een gewone scoretraining.
+const exStartKind = e => e.kind === 'clock' ? 'clock' : `pijlen${e.darts}`;
+function startChoice(exercises, challenge) {
+  const e = (exercises || []).find(x => x.open && x.canSubmit && (x.kind === 'score' || x.kind === 'clock'));
+  if (e) return { kind: exStartKind(e), label: `Gooi de clubtraining: ${e.name}` };
+  return { kind: challenge?.open ? challenge.kind : 'score30', label: startLabel(challenge?.open ? challenge.kind : null) };
+}
 // Posterpagina (A4/A5) om te printen of als pdf te bewaren. In de iPhone-app opent hij in Safari (printen en pdf).
 const posterUrl = (code, club, direct, label = '') => (isNative() ? publicUrl('club/poster.html') : new URL('./poster.html', location.href).href) +
   '#' + new URLSearchParams({ code, club, ...(direct ? { direct: '1' } : {}), ...(label ? { label } : {}) }).toString();
@@ -42,7 +50,7 @@ const readJson = (k, f) => { try { return JSON.parse(localStorage.getItem(k) || 
 const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* privémodus */ } };
 
 let data = localData();
-const state = { playerId: '', clubs: null, club: null, tab: 'week', code: '' };
+const state = { playerId: '', clubs: null, club: null, tab: 'exercises', code: '' };
 state.playerId = readJson(PREFS, {}).playerId && data?.players.some(p => p.id === readJson(PREFS, {}).playerId) ? readJson(PREFS, {}).playerId
   : (data?.players.find(p => p.id === data.activePlayerId) || data?.players[0])?.id || '';
 const acct = () => getAccount(state.playerId);
@@ -149,12 +157,14 @@ async function exercisesHtml() {
       ${e.description ? `<p>${esc(e.description)}</p>` : ''}<p class="help">${esc(exSettings(e))} · ${esc(dutchDate(e.startsOn))} t/m ${esc(dutchDate(e.endsOn))} (22:00)${e.open ? '' : ' · gesloten'}</p>
       ${rows.length ? `<ol class="board">${rows.map(x => boardRow(x, exValue(e, x), x.manual ? 'zelf ingevoerd' : '')).join('')}</ol>` : '<p class="help">Nog geen resultaten.</p>'}
       <p class="help"><a href="${esc(reportExerciseLink(state.club.club, e))}" data-testid="report-exercise">Meld deze training</a> als de naam of uitleg ongepast is.</p>
+      ${e.open && e.canSubmit && (e.kind === 'score' || e.kind === 'clock') ? `<p><a class="btn outline" href="${esc(startLink(exStartKind(e), state.playerId))}" data-testid="ex-start">Gooi deze training</a></p>` : ''}
       ${form}${e.canManage ? `<p><button class="btn danger" type="button" data-delex="${esc(e.id)}">Training verwijderen</button></p>` : ''}</section>`);
   }
   const teams = r.canCreate.teams === 'all' ? state.club.teams : state.club.teams.filter(t => r.canCreate.teams.includes(t.id));
   const canCreate = r.canCreate.club || teams.length;
   const today = new Date().toISOString().slice(0, 10), inWeek = new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10);
-  const create = canCreate ? `<details class="card"><summary><b>Nieuwe clubtraining</b></summary><form id="exercise">
+  const create = canCreate ? `<details class="card"${cards.length ? '' : ' open'}><summary><b>Nieuwe clubtraining</b></summary><form id="exercise">
+      <p class="help">Jullie bepalen zelf de naam, de oefening, het aantal pijlen en hoe lang hij loopt. Elke clubtraining krijgt een eigen ranglijst.</p>
       <label class="field">Naam<input name="name" required maxlength="40" placeholder="Bijv. Dubbel 16 trainen"></label>
       <label class="field">Korte uitleg<textarea name="description" maxlength="200" rows="2" placeholder="Wat moeten de leden doen?"></textarea></label>
       <label class="field">Type<select name="kind"><option value="score">Scoretraining (eigen aantal pijlen)</option><option value="clock">Rond de klok</option><option value="target">Doel-oefening (pijlen op één vak)</option><option value="checkout">Checkout-reeks</option></select></label>
@@ -164,7 +174,8 @@ async function exercisesHtml() {
       <div class="row"><label class="field">Start<input name="startsOn" type="date" value="${today}" required></label><label class="field">Einde<input name="endsOn" type="date" value="${inWeek}" required></label></div>
       <label class="field">Voor<select name="teamId">${r.canCreate.club ? '<option value="">De hele club</option>' : ''}${teams.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label>
       <button class="btn primary">Clubtraining toevoegen</button></form></details>` : '';
-  return (cards.join('') || '<section class="card"><p class="help">Er lopen geen clubtrainingen.</p></section>') + create;
+  const empty = `<section class="card" data-testid="no-exercises"><p class="help">${canCreate ? 'Er lopen nog geen clubtrainingen. Maak hieronder jullie eerste: jullie bepalen zelf hoe hij eruitziet.' : 'Er lopen nu geen clubtrainingen; de beheerder of je captain maakt ze. Je trainingen tellen wel mee in de feed en bij Vorm.'}</p></section>`;
+  return autoHtml(r.exercises) + (cards.join('') || empty) + create + shareHtml();
 }
 function syncExerciseForm() {
   const f = $('#exercise'); if (!f) return;
@@ -197,7 +208,7 @@ function startView() {
       <form id="code" class="row"><label class="field">Clubcode<input name="code" required autocomplete="off" autocapitalize="characters" maxlength="12" value="${esc(state.code)}" placeholder="Bijv. K7M2Q9RT"></label>
         <button class="btn primary">Verder</button></form></section>
     <details class="card"${mine.length ? '' : ' open'}><summary><b>Gratis een club oprichten</b></summary>
-      <form id="create"><p class="help">Voor je dartvereniging, kantine, café of team. Jij wordt beheerder: je krijgt een QR-code om bij het bord te hangen, kiest de weekoefening en houdt overzicht over de leden. Gratis.</p>
+      <form id="create"><p class="help">Voor je dartvereniging, kantine, café of team. Jij wordt beheerder: je krijgt een QR-code om bij het bord te hangen, maakt jullie eigen clubtrainingen en houdt overzicht over de leden. Gratis.</p>
         <label class="field">Naam van de club<input name="name" required maxlength="40" placeholder="Bijv. DC De Roos"></label>
         ${noPlayers ? '<label class="field">Jouw naam of bijnaam<input name="player" required maxlength="24" autocomplete="nickname"></label>' : ''}
         <label class="check"><input type="checkbox" name="consent" required><span>${esc(CONSENT_TEXT)}</span></label>
@@ -242,15 +253,18 @@ function badCode() {
 // Na het meedoen: meteen gooien. De knop opent de juiste training in de app voor de gekozen speler.
 async function joinedView(r, auto) {
   const active = r.status === 'active';
-  let kind = 'score30';
+  let start = startChoice(null, null);
   if (active && r.club.id) {
-    try { const c = await api('/v1/clubs/' + r.club.id); if (c.thisWeek?.challenge?.open) kind = c.thisWeek.challenge.kind; } catch { /* knop met scoretraining */ }
+    try {
+      const [c, ex] = await Promise.all([api('/v1/clubs/' + r.club.id), api(`/v1/clubs/${r.club.id}/exercises`).catch(() => null)]);
+      start = startChoice(ex?.exercises, c.thisWeek?.challenge);
+    } catch { /* knop met scoretraining */ }
   }
   $('#vr').innerHTML = `<section class="card join-done" data-testid="join-done">
       <h2>${active ? `Je doet mee met ${esc(r.club.name)}!` : `Je aanmelding staat klaar bij ${esc(r.club.name)}`}</h2>
-      <p>${active ? (auto ? 'Gooi een training: je score telt direct mee voor de club.' : 'Je bent lid. Automatisch meetellen staat uit: na een training kies je in de club zelf wat je deelt. Aanzetten kan bij Weekoefening.')
+      <p>${active ? (auto ? 'Gooi een training: je score telt direct mee voor de club.' : 'Je bent lid. Automatisch meetellen staat uit: na een training kies je in de club zelf wat je deelt. Aanzetten kan bij Trainingen.')
         : 'De beheerder laat je zo snel mogelijk toe. ' + (auto ? 'Gooi gerust alvast: omdat je automatisch meetellen hebt aangezet, tellen je trainingen mee zodra je erin zit.' : 'Daarna kun je in de club trainingen delen of automatisch meetellen aanzetten.')}</p>
-      <p><a class="btn primary big" href="${esc(startLink(kind, state.playerId))}" data-testid="start-training">${esc(active ? startLabel(kind) : 'Start scoretraining (30 pijlen)')}</a></p>
+      <p><a class="btn primary big" href="${esc(startLink(start.kind, state.playerId))}" data-testid="start-training">${esc(active ? start.label : 'Start scoretraining (30 pijlen)')}</a></p>
       ${active && r.club.id ? `<p><button class="btn outline" type="button" data-open="${esc(r.club.id)}">Naar de club</button></p>` : `<p><button class="btn outline" type="button" data-home>Mijn clubs</button></p>`}</section>`;
 }
 // Nieuwe speler op deze telefoon, rechtstreeks in de opslag van de app (zelfde formaat en sleutel als js/app.js).
@@ -294,14 +308,14 @@ function boardRow(r, value, sub = '') {
 }
 function weekHtml(view) {
   const c = view.challenge;
-  if (!c) return `<p class="help">Er is deze week nog geen weekoefening. ${state.club.club.role === 'admin' ? 'Kies hem bij Beheer → Weekoefening.' : 'De beheerder kiest hem; tot die tijd tellen je trainingen mee in de feed en bij Vorm.'}</p>`;
+  if (!c) return `<p class="help">Er is deze week geen weekoefening. ${state.club.club.role === 'admin' ? 'Instellen kan bij Beheer → Vaste weekoefening; nodig is het niet.' : 'Je trainingen tellen mee bij de clubtrainingen, in de feed en bij Vorm.'}</p>`;
   const hidden = hiddenFor(state.club.id);
   const rows = (view.ranking || []).filter(r => !hidden.has(r.handle));
   const value = r => clubValue(c.kind, r);
   const rec = view.record;
   return `<h3>${esc(CLUB_KIND_LABELS[c.kind])}</h3><p class="help">${c.open ? `Gooi hem wanneer het jou uitkomt; de ranglijst sluit ${esc(closeText(c.closesAt))}.` : 'Deze ranglijst is gesloten.'}
     ${esc(CLUB_KIND_HELP[c.kind] || 'Gemiddelde per 3 pijlen; je beste poging telt.')}${c.kind === 'bobs27' || c.kind === 'c121' ? ' Je resultaat komt uit de oefening in OKKIE.: speel hem en deel hem hieronder.' : ''}</p>
-    ${rec ? `<p class="club-record" data-testid="club-record">Clubrecord ${esc(CLUB_KIND_LABELS[c.kind])}: <b>${esc(clubValue(c.kind, { darts: rec.value, points: rec.value }))}</b> · ${esc(rec.nickname)}</p>` : ''}
+    ${rec ? `<p class="club-record" data-testid="club-record">Clubrecord ${esc(CLUB_KIND_LABELS[c.kind])}: <b>${esc(clubValue(c.kind, { darts: c.darts || rec.value, points: rec.value }))}</b> · ${esc(rec.nickname)}</p>` : ''}
     ${rows.length ? `<ol class="board">${rows.map(r => boardRow(r, value(r))).join('')}</ol>` : '<p class="help">Nog niemand heeft deze oefening gegooid. Jij als eerste?</p>'}
     ${hiddenNote(view.ranking || [])}`;
 }
@@ -313,7 +327,7 @@ async function tabBody() {
   const id = state.club.id, me = state.club.club;
   if (state.tab === 'week') {
     const prev = await api(`/v1/clubs/${id}/challenge?week=previous`);
-    return `${autoHtml()}<section class="card">${weekHtml(state.club.thisWeek)}</section>${prev.challenge ? `<details class="card"><summary><b>Vorige week</b></summary>${weekHtml(prev)}</details>` : ''}${shareHtml()}`;
+    return `<section class="card">${weekHtml(state.club.thisWeek)}</section>${prev.challenge ? `<details class="card"><summary><b>Vorige week</b></summary>${weekHtml(prev)}</details>` : ''}`;
   }
   if (state.tab === 'form') {
     const r = await api(`/v1/clubs/${id}/form`);
@@ -336,8 +350,8 @@ async function tabBody() {
     const parts = [];
     for (const t of teams) {
       const r = await api(`/v1/clubs/${id}/teams/${t.id}`);
-      parts.push(`<section class="card"><h3>${esc(r.team.name)}</h3><p class="help">Vorm van de laatste ${r.weeks} weken en de weekoefening. Checkout-percentages volgen later.</p>
-        <ol class="board">${r.players.map(p => boardRow(p, p.average == null ? '–' : fmt(p.average), `${p.sessions} trainingen · weekoefening: ${p.thisWeek ? `${p.thisWeek.rank}e` : 'nog niet'}`)).join('')}</ol></section>`);
+      parts.push(`<section class="card"><h3>${esc(r.team.name)}</h3><p class="help">Vorm van de laatste ${r.weeks} weken${r.challenge ? ' en de weekoefening' : ''}. Checkout-percentages volgen later.</p>
+        <ol class="board">${r.players.map(p => boardRow(p, p.average == null ? '–' : fmt(p.average), `${p.sessions} trainingen${r.challenge ? ` · weekoefening: ${p.thisWeek ? `${p.thisWeek.rank}e` : 'nog niet'}` : ''}`)).join('')}</ol></section>`);
     }
     return parts.join('') || '<section class="card"><p class="help">Je bent nog geen captain van een team.</p></section>';
   }
@@ -362,12 +376,12 @@ async function tabBody() {
   return '';
 }
 // Automatisch meetellen (per speler op deze telefoon) + direct gooien.
-function autoHtml() {
-  const on = !!clubAutoFor(state.playerId, state.club.id)?.on, c = state.club.thisWeek.challenge;
-  const kind = c?.open ? c.kind : 'score30';
+function autoHtml(exercises) {
+  const on = !!clubAutoFor(state.playerId, state.club.id)?.on;
+  const start = startChoice(exercises, state.club.thisWeek.challenge);
   return `<section class="card auto-card" data-testid="auto-card"><label class="check"><input type="checkbox" id="auto"${on ? ' checked' : ''}>
-      <span><b>Mijn trainingen tellen automatisch mee</b><small>${on ? 'Na elke training gaan je punten naar de weekoefening (als hij past) en de clubfeed. Alleen de samenvatting, nooit losse pijlen.' : 'Staat uit: je deelt alleen trainingen die je hieronder zelf instuurt.'}</small></span></label>
-    <p><a class="btn primary" href="${esc(startLink(kind, state.playerId))}" data-testid="club-start">${esc(startLabel(c?.open ? c.kind : null))}</a></p></section>`;
+      <span><b>Mijn trainingen tellen automatisch mee</b><small>${on ? 'Na elke training gaan je punten naar de clubfeed en naar elke clubtraining waar hij bij past. Alleen de samenvatting, nooit losse pijlen.' : 'Staat uit: je deelt alleen trainingen die je hieronder zelf instuurt.'}</small></span></label>
+    <p><a class="btn primary" href="${esc(startLink(start.kind, state.playerId))}" data-testid="club-start">${esc(start.label)}</a></p></section>`;
 }
 function shareHtml() {
   const list = shareableTrainings(localData(), state.playerId, 7);
@@ -436,9 +450,10 @@ async function adminHtml() {
   const reqHtml = `<section class="card"><h3>Aanmeldingen (${reqs.length})</h3>${reqs.length ? `<ol class="board">${reqs.map(r => `<li><span class="who"><b>${esc(r.nickname)}</b><small>aangevraagd ${esc(r.requestedAt)}</small></span><span></span>
       <span><button class="btn primary" type="button" data-approve="${esc(r.handle)}">Toelaten</button> <button class="btn outline" type="button" data-reject="${esc(r.handle)}">Afwijzen</button></span></li>`).join('')}</ol>` : `<p class="help">Geen nieuwe aanmeldingen. ${boardCodes().some(x => !x.direct) ? 'Wie de QR-code bij het bord scant, verschijnt hier.' : 'Je bordcode laat nieuwe spelers direct toe, dus hier komt niemand meer langs.'}</p>`}</section>`;
   return `${reqs.length ? reqHtml + invitesHtml() : invitesHtml() + reqHtml}
-    <section class="card"><h3>Weekoefening</h3>
-      <form id="challenge"><label class="field">Deze week<select name="kind">${kinds.map(([k, t]) => `<option value="${k}"${state.club.thisWeek.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn primary">Opslaan</button></form>
-      <form id="challenge-next"><label class="field">Volgende week<select name="kind">${kinds.map(([k, t]) => `<option value="${k}"${next.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn outline">Klaarzetten</button></form>
+    <section class="card"><h3>Vaste weekoefening (optioneel)</h3>
+      <p class="help">Niet nodig: bij Trainingen maken jullie eigen clubtrainingen en bepalen jullie alles zelf. Wil je daarnaast elke week een vaste oefening met een ranglijst die zondag 22:00 sluit, kies hem dan hier. Zonder keuze is er geen weekoefening.</p>
+      <form id="challenge"><label class="field">Deze week<select name="kind">${state.club.thisWeek.challenge ? '' : '<option value="" selected>Geen weekoefening</option>'}${kinds.map(([k, t]) => `<option value="${k}"${state.club.thisWeek.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn primary">Opslaan</button></form>
+      <form id="challenge-next"><label class="field">Volgende week<select name="kind">${next.challenge ? '' : '<option value="" selected>Geen weekoefening</option>'}${kinds.map(([k, t]) => `<option value="${k}"${next.challenge?.kind === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label><button class="btn outline">Klaarzetten</button></form>
       <p class="help">Als er al resultaten zijn, kan de oefening van deze week niet meer wijzigen. Een verdachte score verwijder je bij de ranglijst van deze week:</p>
       ${(state.club.thisWeek.ranking || []).map(r => `<button class="btn outline" type="button" data-unresult="${esc(r.handle)}">Resultaat ${esc(r.nickname)} verwijderen</button>`).join(' ')}</section>
     <section class="card"><h3>Clubprofiel</h3>
@@ -455,8 +470,9 @@ async function adminHtml() {
 }
 async function renderClub() {
   const c = state.club.club;
-  const tabs = [['week', 'Weekoefening'], ['exercises', 'Trainingen'], ['form', 'Vorm'], ['feed', 'Feed'], ...(c.role !== 'member' ? [['team', 'Team']] : []), ['members', 'Leden'], ...(c.role === 'admin' ? [['admin', `Beheer${c.pending ? ` (${c.pending})` : ''}`]] : [])];
-  if (!tabs.some(([k]) => k === state.tab)) state.tab = 'week';
+  // Eigen clubtrainingen staan voorop. Het tabblad Weekoefening is er alleen als de club er een heeft ingesteld.
+  const tabs = [['exercises', 'Trainingen'], ...(state.club.thisWeek?.challenge || state.tab === 'week' ? [['week', 'Weekoefening']] : []), ['form', 'Vorm'], ['feed', 'Feed'], ...(c.role !== 'member' ? [['team', 'Team']] : []), ['members', 'Leden'], ...(c.role === 'admin' ? [['admin', `Beheer${c.pending ? ` (${c.pending})` : ''}`]] : [])];
+  if (!tabs.some(([k]) => k === state.tab)) state.tab = 'exercises';
   $('#vr').innerHTML = `<p><button class="back btn outline" type="button" data-home>← Mijn clubs</button></p>
     <header class="g-head club-head"><span id="club-logo">${defaultLogo(c.name)}</span><span><h2>${esc(c.name)}</h2><p class="muted small">${leden(state.club.members.length)} · jij bent ${ROLE[c.role]}</p></span></header>
     <div class="tabs" role="tablist" aria-label="Onderdelen">${tabs.map(([k, t]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${t}</button>`).join('')}</div>
@@ -488,8 +504,8 @@ document.addEventListener('click', e => {
   if (d.open) busy(b, () => openClub(d.open));
   else if (d.other !== undefined) { state.code = ''; status(''); busy(b, home); }
   else if (d.home !== undefined) busy(b, home);
-  // Weekoefening en Beheer altijd vers ophalen: in de kantine gooien anderen ondertussen door.
-  else if (d.tab) { state.tab = d.tab; busy(b, ['week', 'admin', 'members'].includes(d.tab) ? () => openClub(id) : renderClub); }
+  // Trainingen, Weekoefening en Beheer altijd vers ophalen: in de kantine gooien anderen ondertussen door.
+  else if (d.tab) { state.tab = d.tab; busy(b, ['exercises', 'week', 'admin', 'members'].includes(d.tab) ? () => openClub(id) : renderClub); }
   else if (d.cancel) busy(b, async () => { await api(`/v1/clubs/${d.cancel}/me`, 'DELETE'); dropClubAuto(state.playerId, d.cancel); status('Aanmelding ingetrokken.'); await home(); });
   else if (d.hide) { const s = hiddenFor(id); s.has(d.hide) ? s.delete(d.hide) : s.add(d.hide); setHidden(id, s); renderClub(); }
   else if (d.unhide !== undefined) { setHidden(id, new Set()); renderClub(); }
@@ -607,6 +623,7 @@ document.addEventListener('submit', e => {
     await openClub(id);
   });
   else if (f.id === 'challenge' || f.id === 'challenge-next') busy(btn, async () => {
+    if (!f.elements.kind.value) return status('Er is geen weekoefening ingesteld. Dat is prima: jullie eigen clubtrainingen staan bij Trainingen.');
     await api(`/v1/clubs/${id}/challenge`, 'PUT', { kind: f.elements.kind.value, ...(f.id === 'challenge-next' ? { week: 'next' } : {}) });
     status('Weekoefening opgeslagen.'); await openClub(id);
   });
