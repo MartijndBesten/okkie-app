@@ -136,6 +136,7 @@ export const lastRestore = { restored: false };
 // Vóór de app start (js/boot.js en de losse pagina's). Op het web direct klaar.
 export async function prepare({ storage = typeof localStorage !== 'undefined' ? localStorage : null } = {}) {
   if (!isNative() || !storage || mirror) return lastRestore;
+  installBack();   // ook als de bestandsopslag ontbreekt: de terugknop moet altijd werken
   const fs = capacitorFs();
   if (!fs) return lastRestore;
   mirror = createMirror({ fs, storage });
@@ -155,6 +156,28 @@ export async function prepare({ storage = typeof localStorage !== 'undefined' ? 
   return lastRestore;
 }
 export const flushStorage = () => mirror?.flush() || Promise.resolve(false);
+
+// ---------- Android: terugknop ----------
+// Zonder eigen afhandeling sluit Android de app bij de terugknop. Een pagina kan een handler zetten (js/app.js:
+// venster sluiten, terug naar het startscherm); geeft die true terug, dan is de knop afgehandeld. Anders: een pagina
+// terug (bijv. van Club naar de app), of de app naar de achtergrond als er niets meer terug is. Gegevens staan dan al
+// opgeslagen (opslag + duurzame kopie).
+let backHandler = null;
+export const onBack = fn => { backHandler = fn; };
+export function handleBack(ev, { history: h = typeof history !== 'undefined' ? history : null, app = plugin('App') } = {}) {
+  if (backHandler && backHandler() === true) return 'handled';
+  if (ev?.canGoBack && h) { h.back(); return 'back'; }
+  mirror?.flush();
+  if (app?.minimizeApp) { app.minimizeApp(); return 'minimize'; }
+  app?.exitApp?.();
+  return 'exit';
+}
+let backInstalled = false;
+function installBack() {
+  if (backInstalled || platform() !== 'android') return;
+  backInstalled = true;
+  plugin('App')?.addListener?.('backButton', ev => handleBack(ev));
+}
 
 // ---------- Delen en bewaren ----------
 const blobToBase64 = blob => new Promise((ok, no) => {

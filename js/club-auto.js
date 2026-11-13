@@ -1,7 +1,8 @@
 // OKKIE. Club bij het bord: trainingen tellen automatisch mee voor je club.
 // Per speler en per club, alleen als de speler het zelf expliciet aanzet (standaard UIT); altijd weer uit te zetten in de club.
 // Vanaf dat moment gaat van elke afgeronde training alleen de samenvatting (club-share.js: soort, pijlen, punten,
-// hoogste beurt) naar de clubfeed, en naar de weekoefening als hij daarbij past. Nooit losse pijlen of tijdstippen.
+// hoogste beurt) naar de clubfeed, naar elke open clubtraining waar hij bij past en naar de weekoefening als de club die
+// heeft ingesteld. Nooit losse pijlen of tijdstippen.
 // Wacht je nog op goedkeuring of ben je offline, dan blijft de training staan en gaat hij later alsnog mee
 // (hoogstens 14 dagen terug: zo lang toont de clubfeed trainingen).
 import { shareableTrainings } from './club-share.js';
@@ -46,6 +47,8 @@ export function weekStartLocal(now = new Date()) {
   return d;
 }
 
+const localDate = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
 // Wat moet er nog naar welke club? Pure functie (getest in tests/unit/club-auto.test.js).
 export function pendingClubShares(data, links, now = new Date()) {
   const out = [];
@@ -59,12 +62,30 @@ export function pendingClubShares(data, links, now = new Date()) {
       for (const { t, c } of list) {
         const at = Date.parse(t.finishedAt);
         if (!(at >= since) || sent.has(c.trainingId)) continue;
-        out.push({ playerId, clubId, clubName: link.name, training: c, challenge: at >= monday ? 'auto' : false });
+        out.push({ playerId, clubId, clubName: link.name, training: c, challenge: at >= monday ? 'auto' : false, finishedOn: localDate(at) });
       }
     }
   }
   // Oudste eerst: dan klopt de volgorde in de feed.
   return out.reverse();
+}
+
+// Past deze training bij een open clubtraining? Scoretraining met hetzelfde aantal pijlen, of rond de klok, en gegooid
+// binnen de looptijd. Doel-oefeningen en checkout-reeksen voert een lid zelf in.
+export function exerciseFits(e, training, finishedOn) {
+  if (!e?.open || !e.canSubmit) return false;
+  if (finishedOn && (finishedOn < e.startsOn || finishedOn > e.endsOn)) return false;
+  if (e.kind === 'clock') return training.kind === 'clock';
+  return e.kind === 'score' && ['score30', 'score60', 'score99', 'free'].includes(training.kind) && training.darts === e.darts;
+}
+async function shareWithExercises(item, send, tok) {
+  const list = (await send(`/v1/clubs/${item.clubId}/exercises`, 'GET', undefined, tok))?.exercises || [];
+  const out = [];
+  for (const e of list.filter(x => exerciseFits(x, item.training, item.finishedOn))) {
+    const r = await send(`/v1/clubs/${item.clubId}/exercises/${e.id}/results`, 'POST', { trainingId: item.training.trainingId, darts: item.training.darts, points: item.training.points }, tok);
+    out.push({ id: e.id, name: e.name, best: !!r?.best, value: r?.value });
+  }
+  return out;
 }
 
 function markSent(playerId, clubId, trainingId, storage) {
@@ -93,7 +114,9 @@ export function autoShareClubs(data, { send, token, storage = localStorage, now 
       try {
         const r = await send(`/v1/clubs/${item.clubId}/trainings`, 'POST', { training: item.training, feed: true, challenge: item.challenge }, tok);
         markSent(item.playerId, item.clubId, item.training.trainingId, storage);
-        done.push({ ...item, challengeResult: r?.challenge || null });
+        // Server van vóór 1.12.0 (geen `exercises` in het antwoord): de app stuurt het resultaat zelf in bij passende clubtrainingen.
+        const exerciseResults = Array.isArray(r?.exercises) ? r.exercises : await shareWithExercises(item, send, tok).catch(() => []);
+        done.push({ ...item, challengeResult: r?.challenge || null, exerciseResults });
       } catch (e) {
         if (e?.status === 404 || e?.status === 401 || e?.status === 403) { skip.add(key); continue; }
         if (e?.status === 400 || e?.status === 409) { markSent(item.playerId, item.clubId, item.training.trainingId, storage); continue; }
